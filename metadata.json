@@ -1,0 +1,7 @@
+{
+  "name": "Cashback System",
+  "description": "A streamlined cashback management system for small businesses featuring QR code loyalty tracking, admin scanning, and automated balance management.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
