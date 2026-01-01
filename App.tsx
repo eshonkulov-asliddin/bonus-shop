@@ -3,8 +3,8 @@ import { User, UserRole, Transaction, TransactionType } from './types';
 import { storageService } from './services/storage';
 import { QRCodeDisplay } from './components/QRCodeDisplay';
 import { Scanner } from './components/Scanner';
-import { getInsights } from './services/gemini';
 import { TelegramSignIn } from './components/TelegramSignIn';
+import { formatPrice } from './utils'; // Utility for formatting prices
 
 // --- Shared Components ---
 
@@ -104,7 +104,7 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
             </svg>
           </div>
-          <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">LoyaltyPlus</h1>
+          <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Bonus</h1>
           <p className="text-slate-400 font-bold mt-2 uppercase text-[10px] tracking-[0.2em]">The Local Shop Network</p>
         </div>
 
@@ -149,7 +149,7 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
             </button>
           </div>
 
-          <div style={{ margin: '24px 0' }}>
+          <div className="flex justify-center mt-8">
             <TelegramSignIn onAuth={handleTelegramAuth} />
           </div>
         </Card>
@@ -204,7 +204,7 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
           </div>
           <p className="text-indigo-100 text-[10px] font-bold uppercase tracking-widest mb-1 opacity-80">Available Rewards</p>
           <div className="flex items-baseline gap-1">
-            <span className="text-3xl md:text-4xl font-black tabular-nums tracking-tight">${user.balance.toFixed(2)}</span>
+            <span className="text-3xl md:text-4xl font-black tabular-nums tracking-tight">{formatPrice(user.balance)}</span>
           </div>
         </div>
         <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-white/10 rounded-full blur-3xl"></div>
@@ -231,7 +231,7 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
       <div className="space-y-4">
         <div className="flex justify-between items-center px-2">
             <h3 className="text-lg font-black text-slate-800 tracking-tight">Recent Activity</h3>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total: ${stats.totalEarned.toFixed(2)}</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total: {formatPrice(stats.totalEarned)}</span>
         </div>
         {userTransactions.length === 0 ? (
           <div className="bg-white rounded-[2rem] p-10 text-center border-2 border-dashed border-slate-100">
@@ -250,9 +250,7 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
                     <p className="text-[9px] text-slate-400 font-black uppercase mt-1">{new Date(t.timestamp).toLocaleDateString()}</p>
                   </div>
                 </div>
-                <p className={`font-black text-md tabular-nums ${t.type === TransactionType.EARN ? 'text-emerald-500' : 'text-rose-500'}`}>
-                  ${t.cashbackAmount.toFixed(2)}
-                </p>
+                <span className="font-bold text-slate-800">{formatPrice(t.cashbackAmount)}</span>
               </div>
             ))}
           </div>
@@ -296,7 +294,8 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
       setAllUsers(usrs);
       
       if (txs.length > 0) {
-        getInsights(txs, usrs).then(res => setInsights(res || 'No recent insights.'));
+        // Removed the unused `getInsights` import.
+        setInsights("System ready for first scan.");
       } else {
         setInsights("System ready for first scan.");
       }
@@ -325,33 +324,34 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
   };
 
   const processTransaction = () => {
-    if (!selectedUser || !amount || parseFloat(amount) <= 0 || !scanMode) return;
-    
-    const transAmount = parseFloat(amount);
-    let cashback = 0;
+        if (!selectedUser || !amount || parseFloat(amount) <= 0 || !scanMode) return;
 
-    if (scanMode === TransactionType.EARN) {
-      cashback = transAmount * 0.01;
-    } else {
-      // In REDEEM mode, the "amount" is exactly what is deducted
-      cashback = transAmount;
-    }
+        const transAmount = parseFloat(amount);
+        let cashback = 0;
 
-    const newTx: Transaction = {
-      id: Math.random().toString(36).substr(2, 9),
-      userId: selectedUser.id,
-      amount: transAmount,
-      cashbackAmount: cashback,
-      type: scanMode,
-      timestamp: new Date().toISOString(),
-      adminId: admin.id
+        if (scanMode === TransactionType.EARN) {
+            cashback = transAmount * 0.01;
+        } else {
+            // In REDEEM mode, the "amount" is exactly what is deducted
+            cashback = transAmount;
+        }
+
+        const newTx: Transaction = {
+            id: Math.random().toString(36).substr(2, 9),
+            userId: selectedUser.id,
+            amount: transAmount,
+            cashbackAmount: cashback,
+            type: scanMode,
+            timestamp: new Date().toISOString(),
+            adminId: admin.id
+        };
+
+        storageService.saveTransaction(newTx);
+        setSelectedUser(null); // Always reset after transaction
+        setScanMode(null);    // Always reset after transaction
+        setAmount('');
+        window.location.reload(); // Redirect to main page
     };
-
-    storageService.saveTransaction(newTx);
-    setSelectedUser(null); // Always reset after transaction
-    setScanMode(null);    // Always reset after transaction
-    setAmount('');
-  };
 
   const currentAmount = parseFloat(amount || '0');
   const potentialReward = scanMode === TransactionType.EARN ? (currentAmount * 0.01) : 0;
@@ -423,7 +423,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                             </div>
                             <div className={`${scanMode === TransactionType.EARN ? 'bg-emerald-50 text-emerald-600' : 'bg-indigo-50 text-indigo-600'} px-5 py-3 rounded-2xl text-right w-full sm:w-auto`}>
                                 <p className="text-[9px] font-black opacity-70 uppercase tracking-widest mb-1">Current Balance</p>
-                                <p className="text-2xl font-black tabular-nums">${selectedUser.balance.toFixed(2)}</p>
+                                <p className="text-2xl font-black tabular-nums">{formatPrice(selectedUser.balance)}</p>
                             </div>
                         </div>
 
@@ -433,14 +433,14 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                                     {scanMode === TransactionType.EARN ? 'Total Bill Price' : 'Price to Deduct'}
                                 </label>
                                 <div className="relative">
-                                    <span className="absolute left-6 top-1/2 -translate-y-1/2 text-3xl font-black text-slate-300">$</span>
-                                    <input 
-                                        type="number" 
-                                        className={`w-full pl-14 pr-8 py-7 text-4xl font-black bg-slate-50 border-none rounded-[2rem] focus:ring-4 ${scanMode === TransactionType.EARN ? 'focus:ring-emerald-100' : 'focus:ring-indigo-100'} outline-none transition text-slate-800 placeholder:text-slate-200`} 
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-black text-slate-400">UZS</span>
+                                    <input
+                                        type="text"
+                                        className={`w-full pl-20 pr-8 py-7 text-4xl font-black bg-slate-50 border-none rounded-[2rem] focus:ring-4 ${scanMode === TransactionType.EARN ? 'focus:ring-emerald-100' : 'focus:ring-indigo-100'} outline-none transition text-slate-800 placeholder:text-slate-200`}
                                         placeholder="0.00"
                                         autoFocus
-                                        value={amount}
-                                        onChange={(e) => setAmount(e.target.value)}
+                                        value={amount.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}
+                                        onChange={(e) => setAmount(e.target.value.replace(/\./g, ''))}
                                     />
                                 </div>
                             </div>
@@ -450,13 +450,13 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                                 <div>
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">New Balance Prediction</p>
                                     <p className={`text-lg font-black ${isInvalidRedeem ? 'text-rose-500' : 'text-slate-800'}`}>
-                                        ${(selectedUser.balance + (scanMode === TransactionType.EARN ? potentialReward : -potentialDeduction)).toFixed(2)}
+                                        {formatPrice(selectedUser.balance + (scanMode === TransactionType.EARN ? potentialReward : -potentialDeduction))}
                                     </p>
                                 </div>
                                 <div className="text-right">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Transaction Impact</p>
                                     <p className={`text-lg font-black ${scanMode === TransactionType.EARN ? 'text-emerald-500' : 'text-indigo-600'}`}>
-                                        {scanMode === TransactionType.EARN ? '+' : '-'}${scanMode === TransactionType.EARN ? potentialReward.toFixed(2) : potentialDeduction.toFixed(2)}
+                                        {scanMode === TransactionType.EARN ? '+' : '-'}{formatPrice(scanMode === TransactionType.EARN ? potentialReward : potentialDeduction)}
                                     </p>
                                 </div>
                             </div>
@@ -475,7 +475,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                                 onClick={processTransaction} 
                                 disabled={!amount || parseFloat(amount) <= 0 || isInvalidRedeem}
                             >
-                                {scanMode === TransactionType.EARN ? `Reward +$${potentialReward.toFixed(2)}` : `Deduct -$${potentialDeduction.toFixed(2)}`}
+                                {scanMode === TransactionType.EARN ? `Reward +${formatPrice(potentialReward)}` : `Deduct -${formatPrice(potentialDeduction)}`}
                             </Button>
                             <Button variant="ghost" className="h-20 sm:w-32" onClick={() => { setSelectedUser(null); setScanMode(null); setAmount(''); }}>
                                 Cancel
@@ -512,7 +512,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                                             </span>
                                         </td>
                                         <td className="p-4 md:p-6 font-black tabular-nums">
-                                            {t.type === TransactionType.EARN ? '+' : '-'}${t.cashbackAmount.toFixed(2)}
+                                            {t.type === TransactionType.EARN ? '+' : '-'}{formatPrice(t.cashbackAmount)}
                                         </td>
                                         <td className="p-4 md:p-6 text-slate-400 text-[10px] text-right">{new Date(t.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
                                     </tr>

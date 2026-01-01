@@ -17,6 +17,7 @@ const MOCK_ADMIN: User = {
 export const storageService = {
   getUsers: (): User[] => {
     const data = localStorage.getItem(USERS_KEY);
+    console.log('Fetching users from localStorage:', data); // Debugging log
     const users = data ? JSON.parse(data) : [];
     if (!users.find((u: User) => u.role === UserRole.ADMIN)) {
       users.push(MOCK_ADMIN);
@@ -27,6 +28,7 @@ export const storageService = {
 
   getTransactions: (): Transaction[] => {
     const data = localStorage.getItem(TRANSACTIONS_KEY);
+    console.log('Fetching transactions from localStorage:', data); // Debugging log
     return data ? JSON.parse(data) : [];
   },
 
