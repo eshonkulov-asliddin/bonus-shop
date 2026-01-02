@@ -4,9 +4,7 @@ import { storageService } from './services/storage';
 import { QRCodeDisplay } from './components/QRCodeDisplay';
 import { Scanner } from './components/Scanner';
 import { TelegramSignIn } from './components/TelegramSignIn';
-import { formatPrice } from './utils'; // Utility for formatting prices
-
-// --- Shared Components ---
+import { formatPrice } from './utils';
 
 const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'success' }> = ({ children, className = '', variant = 'primary', ...props }) => {
   const variants = {
@@ -38,8 +36,6 @@ const Card: React.FC<{ children: React.ReactNode, title?: string, className?: st
   </div>
 );
 
-// --- Pages ---
-
 const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -47,11 +43,8 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Admin credentials
   const ADMIN_USERNAME = 'admin';
   const ADMIN_PASSWORD = 'admin123';
-  
-  // Test user credentials (for local testing)
   const TEST_USERNAME = 'test';
   const TEST_PASSWORD = 'test123';
 
@@ -67,9 +60,7 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
         return;
       }
 
-      // Check for admin login
       if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-        // Create admin user object immediately
         const adminUser: User = {
           id: 'admin_' + Date.now(),
           phoneNumber: '',
@@ -80,24 +71,18 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
           createdAt: new Date().toISOString()
         };
         
-        // Login immediately for fast UX
         onLogin(adminUser);
         
-        // Sync with backend in background
         storageService.getUsers().then(existingUsers => {
           const backendAdmin = existingUsers.find(u => u.role === UserRole.ADMIN);
           if (backendAdmin) {
-            // Update session with backend data
             localStorage.setItem('loyalty_session', JSON.stringify(backendAdmin));
           } else {
-            // Save new admin to backend
             storageService.saveUser(adminUser);
           }
         }).catch(err => console.error('Background admin sync error:', err));
       } 
-      // Check for test user login
       else if (username === TEST_USERNAME && password === TEST_PASSWORD) {
-        // Create test user object immediately
         const testUser: User = {
           id: 'test_user_1',
           phoneNumber: '+998901234567',
@@ -108,17 +93,13 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
           createdAt: new Date().toISOString()
         };
         
-        // Login immediately for fast UX
         onLogin(testUser);
         
-        // Sync with backend in background
         storageService.getUsers().then(existingUsers => {
           const backendTest = existingUsers.find(u => u.id === 'test_user_1');
           if (backendTest) {
-            // Update session with backend data
             localStorage.setItem('loyalty_session', JSON.stringify(backendTest));
           } else {
-            // Save new test user to backend
             storageService.saveUser(testUser);
           }
         }).catch(err => console.error('Background test user sync error:', err));
@@ -134,16 +115,14 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
     }
   };
 
-  // Handle Telegram auth - auto-create user
   const handleTelegramAuth = async (tgUser: any) => {
     setLoading(true);
     setError('');
     
     try {
       const telegramId = String(tgUser.id);
-      const qrDataValue = 'tg_' + telegramId; // Prefix to ensure it's treated as string
+      const qrDataValue = 'tg_' + telegramId;
       
-      // Create user object immediately
       const user: User = {
         id: telegramId,
         phoneNumber: '',
@@ -154,24 +133,19 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
         createdAt: new Date().toISOString(),
       };
       
-      // Login immediately for fast UX
       onLogin(user);
       
-      // Sync with backend in background
       storageService.getUsers(true).then(existingUsers => {
         let existingUser = existingUsers.find(u => String(u.id) === telegramId);
         
         if (existingUser) {
-          // Update session with backend data
           localStorage.setItem('loyalty_session', JSON.stringify(existingUser));
           
-          // Fix qrData if needed (don't wait for this)
           if (!existingUser.qrData || existingUser.qrData === '' || existingUser.qrData === telegramId || String(existingUser.qrData) === telegramId) {
             existingUser.qrData = qrDataValue;
             storageService.saveUser(existingUser).catch(err => console.error('Background qrData update error:', err));
           }
         } else {
-          // Save new user to backend
           storageService.saveUser(user).catch(err => console.error('Background user save error:', err));
         }
       }).catch(err => console.error('Background Telegram sync error:', err));
@@ -273,7 +247,6 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
 const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogout: () => void }> = ({ user, transactions, onLogout }) => {
   const [showQR, setShowQR] = useState(false);
   
-  // Maximize screen brightness when QR is shown
   useEffect(() => {
     if (showQR && 'wakeLock' in navigator) {
       (navigator as any).wakeLock.request('screen').catch(() => {});
@@ -419,7 +392,6 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
           storageService.getUsers()
         ]);
         
-        // Remove duplicate transactions by ID (keep most recent)
         const uniqueTxs = Array.from(
           new Map(txs.map(t => [t.id, t])).values()
         );
@@ -440,15 +412,13 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
       }
     };
     fetchData();
-  }, []); // Only fetch once on mount
-
+  }, []);
   const launchScanner = (mode: TransactionType) => {
     setScanMode(mode);
     setShowScanner(true);
   };
 
   const handleScan = async (qrData: string) => {
-    // Debug: log all users and their qrData
     const users = await storageService.getUsers(true);
     
     if (users.length === 0) {
@@ -457,24 +427,18 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
       alert("No users found in database. Please check Google Sheets connection.");
       return;
     }
-
-    console.log('All users:', users.map(u => ({ id: u.id, name: u.name, qrData: u.qrData })));
-    console.log('Scanned qrData:', qrData, 'Type:', typeof qrData);
     
-    // Try multiple matching strategies
     const found = users.find(u => {
       const userQrData = String(u.qrData).trim();
       const scannedData = String(qrData).trim();
-      // Check exact match or ID match
       return userQrData === scannedData || String(u.id) === scannedData;
     });
     
     if (found) {
-      console.log('Found user:', found.name);
       setSelectedUser(found);
       setShowScanner(false);
     } else {
-      setShowScanner(false); // Close scanner first!
+      setShowScanner(false);
       setScanMode(null);
       alert("Unknown User QR\nScanned: '" + qrData + "'\nKnown QR codes: " + users.map(u => "'" + u.qrData + "'").join(", "));
     }
@@ -492,7 +456,6 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
           if (scanMode === TransactionType.EARN) {
               cashback = transAmount * 0.01;
           } else {
-              // In REDEEM mode, the "amount" is exactly what is deducted
               cashback = transAmount;
           }
 
@@ -506,7 +469,6 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
               adminId: admin.id
           };
 
-          // Optimistic update: Update UI immediately
           const updatedUser = {
             ...selectedUser,
             balance: selectedUser.balance + (scanMode === TransactionType.EARN ? cashback : -cashback)
@@ -515,15 +477,12 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
           setAllTransactions(prev => [newTx, ...prev]);
           setAllUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
           
-          // Reset state immediately for better UX
           setSelectedUser(null);
           setScanMode(null);
           setAmount('');
           setIsProcessing(false);
           
-          // Save to backend in background (don't wait)
           storageService.saveTransaction(newTx).then(() => {
-            // Optionally refresh data in background to sync any changes
             storageService.getTransactions(true).then(txs => {
               const uniqueTxs = Array.from(new Map(txs.map(t => [t.id, t])).values());
               setAllTransactions(uniqueTxs);
@@ -533,7 +492,6 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
             });
           }).catch(error => {
             console.error('Error saving transaction:', error);
-            // Revert optimistic update on error
             setAllTransactions(prev => prev.filter(t => t.id !== newTx.id));
             setAllUsers(prev => prev.map(u => u.id === selectedUser.id ? selectedUser : u));
             alert('Failed to save transaction. Please try again.');
