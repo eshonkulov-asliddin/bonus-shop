@@ -728,39 +728,31 @@ export default function App() {
 
   useEffect(() => {
     const loadSession = async () => {
-      try {
-        const session = localStorage.getItem('loyalty_session');
-        if (session) {
+      const session = localStorage.getItem('loyalty_session');
+      if (session) {
+        try {
           const storedUser = JSON.parse(session);
-          
           setUser(storedUser);
+          setIsLoading(false);
           
-          try {
-            const freshUser = await storageService.findUserById(storedUser.id);
+          if (storedUser.role !== UserRole.ADMIN) {
+            storageService.getTransactions().then(txs => {
+              setTransactions(txs);
+            }).catch(err => console.error('Error loading transactions:', err));
+          }
+          
+          storageService.findUserById(storedUser.id).then(freshUser => {
             if (freshUser) {
               setUser(freshUser);
               localStorage.setItem('loyalty_session', JSON.stringify(freshUser));
-              
-              if (freshUser.role !== UserRole.ADMIN) {
-                const txs = await storageService.getTransactions();
-                setTransactions(txs);
-              }
             }
-          } catch (error) {
-            console.error('Error fetching fresh user data:', error);
-            if (storedUser.role !== UserRole.ADMIN) {
-              try {
-                const txs = await storageService.getTransactions();
-                setTransactions(txs);
-              } catch (e) {
-                console.error('Error loading transactions:', e);
-              }
-            }
-          }
+          }).catch(err => console.error('Error refreshing user:', err));
+          
+        } catch (error) {
+          console.error('Error parsing session:', error);
+          setIsLoading(false);
         }
-      } catch (error) {
-        console.error('Error loading session:', error);
-      } finally {
+      } else {
         setIsLoading(false);
       }
     };
@@ -770,13 +762,11 @@ export default function App() {
   const handleLogin = async (u: User) => {
     setUser(u);
     localStorage.setItem('loyalty_session', JSON.stringify(u));
+    
     if (u.role !== UserRole.ADMIN) {
-      try {
-        const txs = await storageService.getTransactions();
+      storageService.getTransactions().then(txs => {
         setTransactions(txs);
-      } catch (error) {
-        console.error('Error loading transactions:', error);
-      }
+      }).catch(err => console.error('Error loading transactions:', err));
     }
   };
 
@@ -786,41 +776,58 @@ export default function App() {
   };
 
   useEffect(() => {
-    const refreshUser = async () => {
-      if (user && user.role !== UserRole.ADMIN) {
-        try {
-          const freshUser = await storageService.findUserById(user.id);
-          if (freshUser) {
-            setUser(freshUser);
-            localStorage.setItem('loyalty_session', JSON.stringify(freshUser));
-          }
-        } catch (error) {
-          console.error('Error refreshing user data:', error);
+    if (user && user.role !== UserRole.ADMIN && transactions.length > 0) {
+      storageService.findUserById(user.id).then(freshUser => {
+        if (freshUser && freshUser.balance !== user.balance) {
+          setUser(freshUser);
+          localStorage.setItem('loyalty_session', JSON.stringify(freshUser));
         }
-      }
-    };
-    refreshUser();
+      }).catch(err => console.error('Error refreshing user:', err));
+    }
   }, [transactions]);
 
   useEffect(() => {
     if (!user || user.role === UserRole.ADMIN) return;
 
-    const intervalId = setInterval(async () => {
-      try {
-        const freshUser = await storageService.findUserById(user.id);
-        if (freshUser) {
-          setUser(freshUser);
-          localStorage.setItem('loyalty_session', JSON.stringify(freshUser));
-        }
+    let intervalId: NodeJS.Timeout;
+    
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (intervalId) clearInterval(intervalId);
+      } else {
+        storageService.findUserById(user.id).then(freshUser => {
+          if (freshUser && freshUser.balance !== user.balance) {
+            setUser(freshUser);
+            localStorage.setItem('loyalty_session', JSON.stringify(freshUser));
+          }
+        }).catch(err => console.error('Error auto-refreshing:', err));
         
-        const txs = await storageService.getTransactions(true);
-        setTransactions(txs);
-      } catch (error) {
-        console.error('Error auto-refreshing user data:', error);
+        storageService.getTransactions(true).then(txs => {
+          setTransactions(txs);
+        }).catch(err => console.error('Error refreshing transactions:', err));
+        
+        intervalId = setInterval(() => {
+          storageService.findUserById(user.id).then(freshUser => {
+            if (freshUser && freshUser.balance !== user.balance) {
+              setUser(freshUser);
+              localStorage.setItem('loyalty_session', JSON.stringify(freshUser));
+            }
+          }).catch(err => console.error('Error auto-refreshing:', err));
+          
+          storageService.getTransactions(true).then(txs => {
+            setTransactions(txs);
+          }).catch(err => console.error('Error refreshing transactions:', err));
+        }, 60000);
       }
-    }, 30000);
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    handleVisibilityChange();
 
-    return () => clearInterval(intervalId);
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [user]);
 
   if (isLoading) {
