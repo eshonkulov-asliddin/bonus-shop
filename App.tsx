@@ -398,6 +398,11 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
   const INITIAL_TX_LIMIT = 5;
   const INITIAL_USER_LIMIT = 6;
 
+  // Update insights text when language changes
+  useEffect(() => {
+    setInsights(t('systemReady'));
+  }, [lang, t]);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -765,7 +770,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                         <span className="text-xs font-black uppercase tracking-[0.3em] text-white/90">{t('terminalIq')}</span>
                     </div>
                     <p className="text-base md:text-lg font-bold leading-relaxed mb-8 text-white/90">
-                        "{insights}"
+                        {insights}
                     </p>
                     <div className="space-y-3">
                         <div className="flex justify-between items-center py-2.5 border-b border-white/20">
