@@ -733,24 +733,29 @@ export default function App() {
         if (session) {
           const storedUser = JSON.parse(session);
           
-          // Try to fetch fresh user data, but fallback to stored if it fails
+          setUser(storedUser);
+          
           try {
             const freshUser = await storageService.findUserById(storedUser.id);
             if (freshUser) {
               setUser(freshUser);
-              // Only load transactions for regular users
+              localStorage.setItem('loyalty_session', JSON.stringify(freshUser));
+              
               if (freshUser.role !== UserRole.ADMIN) {
                 const txs = await storageService.getTransactions();
                 setTransactions(txs);
               }
-            } else {
-              // User not found in backend, use stored session
-              setUser(storedUser);
             }
           } catch (error) {
-            console.error('Error fetching fresh user data, using cached session:', error);
-            // Network error or API issue, use stored session data
-            setUser(storedUser);
+            console.error('Error fetching fresh user data:', error);
+            if (storedUser.role !== UserRole.ADMIN) {
+              try {
+                const txs = await storageService.getTransactions();
+                setTransactions(txs);
+              } catch (e) {
+                console.error('Error loading transactions:', e);
+              }
+            }
           }
         }
       } catch (error) {
@@ -765,10 +770,13 @@ export default function App() {
   const handleLogin = async (u: User) => {
     setUser(u);
     localStorage.setItem('loyalty_session', JSON.stringify(u));
-    // Only fetch transactions for regular users, not admins
     if (u.role !== UserRole.ADMIN) {
-      const txs = await storageService.getTransactions();
-      setTransactions(txs);
+      try {
+        const txs = await storageService.getTransactions();
+        setTransactions(txs);
+      } catch (error) {
+        console.error('Error loading transactions:', error);
+      }
     }
   };
 
@@ -778,13 +786,14 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Only refresh user data for non-admin users when transactions change
-    // Admins manage their own data fetching in AdminDashboard
     const refreshUser = async () => {
       if (user && user.role !== UserRole.ADMIN) {
         try {
           const freshUser = await storageService.findUserById(user.id);
-          if (freshUser) setUser(freshUser);
+          if (freshUser) {
+            setUser(freshUser);
+            localStorage.setItem('loyalty_session', JSON.stringify(freshUser));
+          }
         } catch (error) {
           console.error('Error refreshing user data:', error);
         }
@@ -792,6 +801,27 @@ export default function App() {
     };
     refreshUser();
   }, [transactions]);
+
+  useEffect(() => {
+    if (!user || user.role === UserRole.ADMIN) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        const freshUser = await storageService.findUserById(user.id);
+        if (freshUser) {
+          setUser(freshUser);
+          localStorage.setItem('loyalty_session', JSON.stringify(freshUser));
+        }
+        
+        const txs = await storageService.getTransactions(true);
+        setTransactions(txs);
+      } catch (error) {
+        console.error('Error auto-refreshing user data:', error);
+      }
+    }, 30000);
+
+    return () => clearInterval(intervalId);
+  }, [user]);
 
   if (isLoading) {
     return (
