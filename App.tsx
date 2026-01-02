@@ -41,58 +41,125 @@ const Card: React.FC<{ children: React.ReactNode, title?: string, className?: st
 // --- Pages ---
 
 const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [name, setName] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleAuth = (e: React.FormEvent) => {
+  // Admin credentials
+  const ADMIN_USERNAME = 'admin';
+  const ADMIN_PASSWORD = 'admin123';
+  
+  // Test user credentials (for local testing)
+  const TEST_USERNAME = 'test';
+  const TEST_PASSWORD = 'test123';
+
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
 
-    if (phoneNumber === '000') {
-        const admin = storageService.findUserByPhone('000');
-        if (admin) onLogin(admin);
+    try {
+      if (!username || !password) {
+        setError('Please enter username and password');
+        setLoading(false);
         return;
-    }
-
-    if (isSignUp) {
-      if (!name || !phoneNumber) return setError('Please fill all fields');
-      const newUser: User = {
-        id: Math.random().toString(36).substr(2, 9),
-        phoneNumber,
-        name,
-        role: UserRole.USER,
-        balance: 0,
-        qrData: `user_${phoneNumber}_${Date.now()}`,
-        createdAt: new Date().toISOString()
-      };
-      storageService.saveUser(newUser);
-      onLogin(newUser);
-    } else {
-      const user = storageService.findUserByPhone(phoneNumber);
-      if (user) {
-        onLogin(user);
-      } else {
-        setError('User not found. Please sign up.');
       }
+
+      // Check for admin login
+      if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+        // Find or create admin user
+        const existingUsers = await storageService.getUsers();
+        let adminUser = existingUsers.find(u => u.role === UserRole.ADMIN);
+        
+        if (!adminUser) {
+          adminUser = {
+            id: 'admin_' + Date.now(),
+            phoneNumber: '',
+            name: 'Administrator',
+            role: UserRole.ADMIN,
+            balance: 0,
+            qrData: 'admin_' + Date.now(),
+            createdAt: new Date().toISOString()
+          };
+          await storageService.saveUser(adminUser);
+        }
+        onLogin(adminUser);
+      } 
+      // Check for test user login
+      else if (username === TEST_USERNAME && password === TEST_PASSWORD) {
+        // Find or create test user
+        const existingUsers = await storageService.getUsers();
+        let testUser = existingUsers.find(u => u.id === 'test_user_1');
+        
+        if (!testUser) {
+          testUser = {
+            id: 'test_user_1',
+            phoneNumber: '+998901234567',
+            name: 'Test User',
+            role: UserRole.USER,
+            balance: 0,
+            qrData: 'test_user_1',
+            createdAt: new Date().toISOString()
+          };
+          await storageService.saveUser(testUser);
+        }
+        onLogin(testUser);
+      } 
+      else {
+        setError('Invalid username or password');
+      }
+    } catch (error) {
+      console.error('Admin login error:', error);
+      setError('Connection error. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Handle Telegram auth
-  const handleTelegramAuth = (tgUser: any) => {
-    // Map Telegram user to your User type
-    const user: User = {
-      id: tgUser.id.toString(),
-      phoneNumber: '', // Telegram does not provide phone
-      name: tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : ''),
-      role: UserRole.USER,
-      balance: 0,
-      qrData: tgUser.id.toString(),
-      createdAt: new Date().toISOString(),
-    };
-    storageService.saveUser(user); // Save Telegram user to local storage
-    onLogin(user);
+  // Handle Telegram auth - auto-create user
+  const handleTelegramAuth = async (tgUser: any) => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      const telegramId = String(tgUser.id);
+      const qrDataValue = 'tg_' + telegramId; // Prefix to ensure it's treated as string
+      
+      // Check if user already exists
+      const existingUsers = await storageService.getUsers(true);
+      let existingUser = existingUsers.find(u => String(u.id) === telegramId);
+      
+      if (existingUser) {
+        // Fix: Ensure existing user has qrData set correctly
+        if (!existingUser.qrData || existingUser.qrData === '' || existingUser.qrData === telegramId || String(existingUser.qrData) === telegramId) {
+          existingUser.qrData = qrDataValue;
+          await storageService.saveUser(existingUser);
+        }
+        onLogin(existingUser);
+        return;
+      }
+      
+      // Auto-create new user
+      const user: User = {
+        id: telegramId,
+        phoneNumber: '',
+        name: tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : ''),
+        role: UserRole.USER,
+        balance: 0,
+        qrData: qrDataValue,
+        createdAt: new Date().toISOString(),
+      };
+      
+      await storageService.saveUser(user);
+      onLogin(user);
+    } catch (error) {
+      console.error('Telegram auth error:', error);
+      setError('Connection error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -109,49 +176,72 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
         </div>
 
         <Card>
-          <form onSubmit={handleAuth} className="space-y-5">
-            {isSignUp && (
+          {showAdminLogin ? (
+            // Admin Login Form
+            <form onSubmit={handleAdminLogin} className="space-y-5">
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Full Name</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Username</label>
                 <input 
                   type="text" 
                   className="w-full p-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-800" 
-                  placeholder="Enter your name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Enter admin username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoFocus
                 />
               </div>
-            )}
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Phone Number</label>
-              <input 
-                type="tel" 
-                className="w-full p-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-800" 
-                placeholder="e.g. 555-0199"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-              />
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Password</label>
+                <input 
+                  type="password" 
+                  className="w-full p-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-800" 
+                  placeholder="Enter password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+
+              {error && <div className="p-3 bg-rose-50 text-rose-600 text-xs font-bold rounded-xl text-center">{error}</div>}
+
+              <Button type="submit" className="w-full h-14" disabled={loading}>
+                {loading ? 'Signing in...' : 'Admin Login'}
+              </Button>
+              
+              <button 
+                type="button"
+                onClick={() => { setShowAdminLogin(false); setError(''); setUsername(''); setPassword(''); }}
+                className="w-full text-slate-500 text-sm font-semibold hover:text-indigo-600 transition mt-4"
+              >
+                ← Back to User Login
+              </button>
+            </form>
+          ) : (
+            // User Login (Telegram Only)
+            <div className="space-y-6">
+              <div className="text-center py-6">
+                <h3 className="text-lg font-bold text-slate-800 mb-2">Customer Login</h3>
+                <p className="text-slate-500 text-sm">Sign in with Telegram to access your cashback rewards</p>
+              </div>
+
+              {error && <div className="p-3 bg-rose-50 text-rose-600 text-xs font-bold rounded-xl text-center">{error}</div>}
+
+              <div className="flex justify-center">
+                <TelegramSignIn onAuth={handleTelegramAuth} />
+              </div>
+
+              <div className="pt-6 border-t border-slate-100">
+                <button 
+                  onClick={() => setShowAdminLogin(true)}
+                  className="w-full text-slate-400 text-xs font-semibold hover:text-indigo-600 transition flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  Admin Access
+                </button>
+              </div>
             </div>
-
-            {error && <div className="p-3 bg-rose-50 text-rose-600 text-xs font-bold rounded-xl text-center">{error}</div>}
-
-            <Button type="submit" className="w-full h-14">
-              {isSignUp ? 'Join Program' : 'Welcome Back'}
-            </Button>
-          </form>
-
-          <div className="mt-8 text-center">
-            <button 
-              onClick={() => { setIsSignUp(!isSignUp); setError(''); }}
-              className="text-slate-500 text-sm font-semibold hover:text-indigo-600 transition"
-            >
-              {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Create one"}
-            </button>
-          </div>
-
-          <div className="flex justify-center mt-8">
-            <TelegramSignIn onAuth={handleTelegramAuth} />
-          </div>
+          )}
         </Card>
       </div>
     </div>
@@ -160,6 +250,13 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
 
 const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogout: () => void }> = ({ user, transactions, onLogout }) => {
   const [showQR, setShowQR] = useState(false);
+  
+  // Maximize screen brightness when QR is shown
+  useEffect(() => {
+    if (showQR && 'wakeLock' in navigator) {
+      (navigator as any).wakeLock.request('screen').catch(() => {});
+    }
+  }, [showQR]);
   const userTransactions = transactions.filter(t => t.userId === user.id);
   
   const stats = useMemo(() => {
@@ -259,16 +356,15 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
 
       {/* QR Modal */}
       {showQR && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-300">
-            <div className="w-full max-w-sm bg-white rounded-[3rem] p-8 text-center space-y-6 shadow-2xl scale-in-95 animate-in slide-in-from-bottom-10">
+        <div className="fixed inset-0 z-[100] bg-white flex items-center justify-center p-6">
+            <div className="w-full max-w-sm text-center space-y-6">
                 <div className="flex flex-col items-center">
-                    <p className="text-slate-400 text-xs font-black uppercase tracking-[0.2em] mb-4">My Personal ID</p>
-                    <QRCodeDisplay value={user.qrData} size={240} />
+                    <p className="text-slate-400 text-xs font-black uppercase tracking-[0.2em] mb-4">Show to Merchant</p>
+                    <QRCodeDisplay value={user.qrData} />
                     <h4 className="mt-6 text-xl font-black text-slate-900">{user.name}</h4>
-                    <p className="text-slate-400 text-xs font-bold">{user.phoneNumber}</p>
                 </div>
-                <Button variant="ghost" className="w-full text-slate-400 hover:text-slate-900" onClick={() => setShowQR(false)}>
-                    Close Scanner Pass
+                <Button variant="secondary" className="w-full" onClick={() => setShowQR(false)}>
+                    Close
                 </Button>
             </div>
         </div>
@@ -285,72 +381,132 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
   const [insights, setInsights] = useState('Terminal syncing...');
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
-    const fetchData = () => {
-      const txs = storageService.getTransactions();
-      const usrs = storageService.getUsers();
-      setAllTransactions(txs);
+    const fetchData = async () => {
+      const txs = await storageService.getTransactions();
+      const usrs = await storageService.getUsers();
+      
+      // Remove duplicate transactions by ID (keep most recent)
+      const uniqueTxs = Array.from(
+        new Map(txs.map(t => [t.id, t])).values()
+      );
+      
+      setAllTransactions(uniqueTxs);
       setAllUsers(usrs);
       
-      if (txs.length > 0) {
-        // Removed the unused `getInsights` import.
+      if (uniqueTxs.length > 0) {
         setInsights("System ready for first scan.");
       } else {
         setInsights("System ready for first scan.");
       }
     };
     fetchData();
-  }, [selectedUser]);
+  }, []); // Only fetch once on mount
 
   const launchScanner = (mode: TransactionType) => {
     setScanMode(mode);
     setShowScanner(true);
   };
 
-  const handleScan = (qrData: string) => {
+  const handleScan = async (qrData: string) => {
     // Debug: log all users and their qrData
-    const users = storageService.getUsers();
+    const users = await storageService.getUsers(true);
+    
+    if (users.length === 0) {
+      setShowScanner(false);
+      setScanMode(null);
+      alert("No users found in database. Please check Google Sheets connection.");
+      return;
+    }
+
     console.log('All users:', users.map(u => ({ id: u.id, name: u.name, qrData: u.qrData })));
-    console.log('Scanned qrData:', qrData);
-    const found = users.find(u => String(u.qrData) === String(qrData));
+    console.log('Scanned qrData:', qrData, 'Type:', typeof qrData);
+    
+    // Try multiple matching strategies
+    const found = users.find(u => {
+      const userQrData = String(u.qrData).trim();
+      const scannedData = String(qrData).trim();
+      // Check exact match or ID match
+      return userQrData === scannedData || String(u.id) === scannedData;
+    });
+    
     if (found) {
+      console.log('Found user:', found.name);
       setSelectedUser(found);
       setShowScanner(false);
     } else {
-      alert("Unknown User QR\nScanned: " + qrData + "\nKnown: " + users.map(u => u.qrData).join(", "));
+      setShowScanner(false); // Close scanner first!
       setScanMode(null);
+      alert("Unknown User QR\nScanned: '" + qrData + "'\nKnown QR codes: " + users.map(u => "'" + u.qrData + "'").join(", "));
     }
   };
 
-  const processTransaction = () => {
-        if (!selectedUser || !amount || parseFloat(amount) <= 0 || !scanMode) return;
+  const processTransaction = async () => {
+        if (!selectedUser || !amount || parseFloat(amount) <= 0 || !scanMode || isProcessing) return;
 
-        const transAmount = parseFloat(amount);
-        let cashback = 0;
+        setIsProcessing(true);
+        
+        try {
+          const transAmount = parseFloat(amount);
+          let cashback = 0;
 
-        if (scanMode === TransactionType.EARN) {
-            cashback = transAmount * 0.01;
-        } else {
-            // In REDEEM mode, the "amount" is exactly what is deducted
-            cashback = transAmount;
+          if (scanMode === TransactionType.EARN) {
+              cashback = transAmount * 0.01;
+          } else {
+              // In REDEEM mode, the "amount" is exactly what is deducted
+              cashback = transAmount;
+          }
+
+          const newTx: Transaction = {
+              id: Math.random().toString(36).substr(2, 9),
+              userId: selectedUser.id,
+              amount: transAmount,
+              cashbackAmount: cashback,
+              type: scanMode,
+              timestamp: new Date().toISOString(),
+              adminId: admin.id
+          };
+
+          // Optimistic update: Update UI immediately
+          const updatedUser = {
+            ...selectedUser,
+            balance: selectedUser.balance + (scanMode === TransactionType.EARN ? cashback : -cashback)
+          };
+          
+          setAllTransactions(prev => [newTx, ...prev]);
+          setAllUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+          
+          // Reset state immediately for better UX
+          setSelectedUser(null);
+          setScanMode(null);
+          setAmount('');
+          setIsProcessing(false);
+          
+          // Save to backend in background (don't wait)
+          storageService.saveTransaction(newTx).then(() => {
+            // Optionally refresh data in background to sync any changes
+            storageService.getTransactions(true).then(txs => {
+              const uniqueTxs = Array.from(new Map(txs.map(t => [t.id, t])).values());
+              setAllTransactions(uniqueTxs);
+            });
+            storageService.getUsers(true).then(usrs => {
+              setAllUsers(usrs);
+            });
+          }).catch(error => {
+            console.error('Error saving transaction:', error);
+            // Revert optimistic update on error
+            setAllTransactions(prev => prev.filter(t => t.id !== newTx.id));
+            setAllUsers(prev => prev.map(u => u.id === selectedUser.id ? selectedUser : u));
+            alert('Failed to save transaction. Please try again.');
+          });
+          
+        } catch (error) {
+          console.error('Error processing transaction:', error);
+          alert('Failed to process transaction. Please try again.');
+          setIsProcessing(false);
         }
-
-        const newTx: Transaction = {
-            id: Math.random().toString(36).substr(2, 9),
-            userId: selectedUser.id,
-            amount: transAmount,
-            cashbackAmount: cashback,
-            type: scanMode,
-            timestamp: new Date().toISOString(),
-            adminId: admin.id
-        };
-
-        storageService.saveTransaction(newTx);
-        setSelectedUser(null); // Always reset after transaction
-        setScanMode(null);    // Always reset after transaction
-        setAmount('');
-        window.location.reload(); // Redirect to main page
     };
 
   const currentAmount = parseFloat(amount || '0');
@@ -473,11 +629,11 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                                 className="flex-1 h-20 rounded-3xl text-lg shadow-xl" 
                                 variant={scanMode === TransactionType.EARN ? 'success' : 'primary'} 
                                 onClick={processTransaction} 
-                                disabled={!amount || parseFloat(amount) <= 0 || isInvalidRedeem}
+                                disabled={!amount || parseFloat(amount) <= 0 || isInvalidRedeem || isProcessing}
                             >
-                                {scanMode === TransactionType.EARN ? `Reward +${formatPrice(potentialReward)}` : `Deduct -${formatPrice(potentialDeduction)}`}
+                                {isProcessing ? 'Processing...' : (scanMode === TransactionType.EARN ? `Reward +${formatPrice(potentialReward)}` : `Deduct -${formatPrice(potentialDeduction)}`)}
                             </Button>
-                            <Button variant="ghost" className="h-20 sm:w-32" onClick={() => { setSelectedUser(null); setScanMode(null); setAmount(''); }}>
+                            <Button variant="ghost" className="h-20 sm:w-32" onClick={() => { setSelectedUser(null); setScanMode(null); setAmount(''); }} disabled={isProcessing}>
                                 Cancel
                             </Button>
                         </div>
@@ -498,7 +654,10 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                             </tr>
                         </thead>
                         <tbody className="text-[11px] md:text-xs">
-                            {allTransactions.slice(0, 10).map(t => {
+                            {allTransactions
+                              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                              .slice(0, 10)
+                              .map(t => {
                                 const customer = allUsers.find(u => u.id === t.userId);
                                 return (
                                     <tr key={t.id} className="border-b last:border-0 border-slate-50 hover:bg-slate-50 transition-colors">
@@ -570,21 +729,52 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const session = localStorage.getItem('loyalty_session');
-    if (session) {
-      const storedUser = JSON.parse(session);
-      const freshUser = storageService.findUserByPhone(storedUser.phoneNumber);
-      if (freshUser) setUser(freshUser);
-    }
-    setTransactions(storageService.getTransactions());
+    const loadSession = async () => {
+      try {
+        const session = localStorage.getItem('loyalty_session');
+        if (session) {
+          const storedUser = JSON.parse(session);
+          
+          // Try to fetch fresh user data, but fallback to stored if it fails
+          try {
+            const freshUser = await storageService.findUserById(storedUser.id);
+            if (freshUser) {
+              setUser(freshUser);
+              // Only load transactions for regular users
+              if (freshUser.role !== UserRole.ADMIN) {
+                const txs = await storageService.getTransactions();
+                setTransactions(txs);
+              }
+            } else {
+              // User not found in backend, use stored session
+              setUser(storedUser);
+            }
+          } catch (error) {
+            console.error('Error fetching fresh user data, using cached session:', error);
+            // Network error or API issue, use stored session data
+            setUser(storedUser);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading session:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadSession();
   }, []);
 
-  const handleLogin = (u: User) => {
+  const handleLogin = async (u: User) => {
     setUser(u);
     localStorage.setItem('loyalty_session', JSON.stringify(u));
-    setTransactions(storageService.getTransactions());
+    // Only fetch transactions for regular users, not admins
+    if (u.role !== UserRole.ADMIN) {
+      const txs = await storageService.getTransactions();
+      setTransactions(txs);
+    }
   };
 
   const handleLogout = () => {
@@ -593,17 +783,35 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Always refresh user from storage after transactions or login
-    if (user) {
-      // Try to find by id first
-      let freshUser = storageService.getUsers().find(u => u.id === user.id);
-      // If not found (e.g. Telegram user with empty phone), try by phoneNumber if available
-      if (!freshUser && user.phoneNumber) {
-        freshUser = storageService.getUsers().find(u => u.phoneNumber === user.phoneNumber);
+    // Only refresh user data for non-admin users when transactions change
+    // Admins manage their own data fetching in AdminDashboard
+    const refreshUser = async () => {
+      if (user && user.role !== UserRole.ADMIN) {
+        try {
+          const freshUser = await storageService.findUserById(user.id);
+          if (freshUser) setUser(freshUser);
+        } catch (error) {
+          console.error('Error refreshing user data:', error);
+        }
       }
-      if (freshUser) setUser(freshUser);
-    }
+    };
+    refreshUser();
   }, [transactions]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-indigo-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-indigo-100 animate-pulse">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+            </svg>
+          </div>
+          <p className="text-slate-400 font-bold text-sm uppercase tracking-wider">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
     return <AuthPage onLogin={handleLogin} />;

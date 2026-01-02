@@ -1,0 +1,4 @@
+/*
+  Permissions-Policy: camera=*, microphone=*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
