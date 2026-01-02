@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { User, UserRole, Transaction, TransactionType } from './types';
 import { storageService } from './services/storage';
 import { QRCodeDisplay } from './components/QRCodeDisplay';
 import { Scanner } from './components/Scanner';
 import { TelegramSignIn } from './components/TelegramSignIn';
-import { formatPrice } from './utils';
+import { formatPrice, generateId, debounce } from './utils';
 import { useI18n } from './services/i18n';
 import { LanguageSelect } from './components/LanguageSelect';
 
@@ -173,11 +173,11 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
           <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">{t('appName')}</h1>
           <p className="text-slate-400 font-bold mt-2 uppercase text-[10px] tracking-[0.2em]">{t('appTagline')}</p>
         </div>
-        <div className="flex justify-end mb-4">
-          <LanguageSelect size="sm" />
-        </div>
 
         <Card>
+          <div className="flex justify-end -mt-2 -mr-2 mb-4">
+            <LanguageSelect />
+          </div>
           {showAdminLogin ? (
             // Admin Login Form
             <form onSubmit={handleAdminLogin} className="space-y-5">
@@ -474,7 +474,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
           }
 
           const newTx: Transaction = {
-              id: Math.random().toString(36).substr(2, 9),
+              id: generateId(),
               userId: selectedUser.id,
               amount: transAmount,
               cashbackAmount: cashback,
@@ -537,7 +537,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
           </div>
         </div>
         <div className="flex items-center gap-3 sm:gap-2">
-          <LanguageSelect size="sm" />
+          <LanguageSelect />
           <button onClick={onLogout} className="w-full sm:w-auto px-5 py-2.5 bg-slate-50 hover:bg-rose-50 rounded-xl text-slate-500 hover:text-rose-600 font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-2">
             {t('lockSession')}
           </button>
@@ -868,33 +868,28 @@ export default function App() {
 
     let intervalId: NodeJS.Timeout;
     
+    const refreshData = () => {
+      storageService.findUserById(user.id).then(freshUser => {
+        if (freshUser && freshUser.balance !== user.balance) {
+          setUser(freshUser);
+          localStorage.setItem('loyalty_session', JSON.stringify(freshUser));
+        }
+      }).catch(err => console.error('Error auto-refreshing:', err));
+      
+      storageService.getTransactions(true).then(txs => {
+        setTransactions(txs);
+      }).catch(err => console.error('Error refreshing transactions:', err));
+    };
+
+    const debouncedRefresh = debounce(refreshData, 300);
+    
     const handleVisibilityChange = () => {
       if (document.hidden) {
         if (intervalId) clearInterval(intervalId);
       } else {
-        storageService.findUserById(user.id).then(freshUser => {
-          if (freshUser && freshUser.balance !== user.balance) {
-            setUser(freshUser);
-            localStorage.setItem('loyalty_session', JSON.stringify(freshUser));
-          }
-        }).catch(err => console.error('Error auto-refreshing:', err));
+        debouncedRefresh();
         
-        storageService.getTransactions(true).then(txs => {
-          setTransactions(txs);
-        }).catch(err => console.error('Error refreshing transactions:', err));
-        
-        intervalId = setInterval(() => {
-          storageService.findUserById(user.id).then(freshUser => {
-            if (freshUser && freshUser.balance !== user.balance) {
-              setUser(freshUser);
-              localStorage.setItem('loyalty_session', JSON.stringify(freshUser));
-            }
-          }).catch(err => console.error('Error auto-refreshing:', err));
-          
-          storageService.getTransactions(true).then(txs => {
-            setTransactions(txs);
-          }).catch(err => console.error('Error refreshing transactions:', err));
-        }, 60000);
+        intervalId = setInterval(refreshData, 60000);
       }
     };
     

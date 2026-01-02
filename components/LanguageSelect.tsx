@@ -1,21 +1,32 @@
 import React from 'react';
 import { useI18n, Lang } from '../services/i18n';
 
-export const LanguageSelect: React.FC<{ className?: string; size?: 'sm' | 'md' }>
-  = ({ className = '', size = 'md' }) => {
+const languages: { code: Lang; label: string; short: string }[] = [
+  { code: 'uz', label: "O'z", short: 'UZ' },
+  { code: 'en', label: 'En', short: 'EN' },
+  { code: 'ru', label: 'Ру', short: 'RU' },
+];
+
+export const LanguageSelect: React.FC<{ className?: string }>
+  = ({ className = '' }) => {
   const { lang, setLang } = useI18n();
-  const pad = size === 'sm' ? 'px-3 py-2 text-xs' : 'px-3 py-2.5 text-sm';
 
   return (
-    <select
-      value={lang}
-      onChange={(e) => setLang(e.target.value as Lang)}
-      className={`${pad} bg-white border border-slate-200 rounded-lg font-semibold text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition-colors ${className}`}
-    >
-      <option value="uz">🇺🇿 Uzbek</option>
-      <option value="en">🇬🇧 English</option>
-      <option value="ru">🇷🇺 Русский</option>
-    </select>
+    <div className={`flex items-center gap-0.5 bg-slate-100 p-1 rounded-xl ${className}`}>
+      {languages.map((language) => (
+        <button
+          key={language.code}
+          onClick={() => setLang(language.code)}
+          className={`px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all ${
+            language.code === lang 
+              ? 'bg-white text-indigo-600 shadow-sm' 
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          {language.label}
+        </button>
+      ))}
+    </div>
   );
 };
 

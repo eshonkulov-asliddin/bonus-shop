@@ -12,8 +12,62 @@ interface CacheEntry<T> {
 }
 
 const CACHE_TTL = 5 * 60 * 1000;
+const REQUEST_TIMEOUT = 15000; // 15 seconds timeout
+const MAX_RETRIES = 2;
+
 let usersCache: CacheEntry<User[]> | null = null;
 let transactionsCache: CacheEntry<Transaction[]> | null = null;
+
+// Fetch with timeout and retry logic
+const fetchWithTimeout = async (url: string, options?: RequestInit, timeout = REQUEST_TIMEOUT): Promise<Response> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+};
+
+const fetchWithRetry = async <T>(
+  url: string, 
+  options?: RequestInit, 
+  retries = MAX_RETRIES
+): Promise<T> => {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetchWithTimeout(url, options);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      return await response.json();
+    } catch (error) {
+      lastError = error as Error;
+      console.warn(`Fetch attempt ${attempt + 1}/${retries + 1} failed:`, error);
+      
+      // Don't retry on abort (timeout) for POST requests
+      if (options?.method === 'POST' && (error as Error).name === 'AbortError') {
+        throw error;
+      }
+      
+      // Wait before retry (exponential backoff)
+      if (attempt < retries) {
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+      }
+    }
+  }
+  
+  throw lastError;
+};
 
 export const storageService = {
   getUsers: async (forceRefresh = false): Promise<User[]> => {
@@ -22,8 +76,7 @@ export const storageService = {
     }
 
     try {
-      const response = await fetch(`${APPSCRIPT_URL}?action=getUsers`);
-      const users = await response.json();
+      const users = await fetchWithRetry<User[]>(`${APPSCRIPT_URL}?action=getUsers`);
       
       usersCache = {
         data: users,
@@ -44,8 +97,7 @@ export const storageService = {
     }
 
     try {
-      const response = await fetch(`${APPSCRIPT_URL}?action=getTransactions`);
-      const transactions = await response.json();
+      const transactions = await fetchWithRetry<Transaction[]>(`${APPSCRIPT_URL}?action=getTransactions`);
       
       transactionsCache = {
         data: transactions,
@@ -62,12 +114,14 @@ export const storageService = {
 
   saveUser: async (user: User): Promise<void> => {
     try {
-      const response = await fetch(`${APPSCRIPT_URL}?action=saveUser`, {
-        method: 'POST',
-        body: JSON.stringify(user)
-      });
-      
-      const result = await response.json();
+      const result = await fetchWithRetry<{ success: boolean; error?: string }>(
+        `${APPSCRIPT_URL}?action=saveUser`,
+        {
+          method: 'POST',
+          body: JSON.stringify(user)
+        },
+        1 // Only 1 retry for writes
+      );
       
       if (result.success) {
         usersCache = null;
@@ -82,12 +136,14 @@ export const storageService = {
 
   saveTransaction: async (transaction: Transaction): Promise<void> => {
     try {
-      const response = await fetch(`${APPSCRIPT_URL}?action=saveTransaction`, {
-        method: 'POST',
-        body: JSON.stringify(transaction)
-      });
-      
-      const result = await response.json();
+      const result = await fetchWithRetry<{ success: boolean; error?: string }>(
+        `${APPSCRIPT_URL}?action=saveTransaction`,
+        {
+          method: 'POST',
+          body: JSON.stringify(transaction)
+        },
+        1 // Only 1 retry for writes
+      );
       
       if (result.success) {
         transactionsCache = null;
@@ -116,4 +172,3 @@ export const storageService = {
     transactionsCache = null;
   }
 };
-
