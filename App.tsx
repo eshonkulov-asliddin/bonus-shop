@@ -69,43 +69,59 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
 
       // Check for admin login
       if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-        // Find or create admin user
-        const existingUsers = await storageService.getUsers();
-        let adminUser = existingUsers.find(u => u.role === UserRole.ADMIN);
+        // Create admin user object immediately
+        const adminUser: User = {
+          id: 'admin_' + Date.now(),
+          phoneNumber: '',
+          name: 'Administrator',
+          role: UserRole.ADMIN,
+          balance: 0,
+          qrData: 'admin_' + Date.now(),
+          createdAt: new Date().toISOString()
+        };
         
-        if (!adminUser) {
-          adminUser = {
-            id: 'admin_' + Date.now(),
-            phoneNumber: '',
-            name: 'Administrator',
-            role: UserRole.ADMIN,
-            balance: 0,
-            qrData: 'admin_' + Date.now(),
-            createdAt: new Date().toISOString()
-          };
-          await storageService.saveUser(adminUser);
-        }
+        // Login immediately for fast UX
         onLogin(adminUser);
+        
+        // Sync with backend in background
+        storageService.getUsers().then(existingUsers => {
+          const backendAdmin = existingUsers.find(u => u.role === UserRole.ADMIN);
+          if (backendAdmin) {
+            // Update session with backend data
+            localStorage.setItem('loyalty_session', JSON.stringify(backendAdmin));
+          } else {
+            // Save new admin to backend
+            storageService.saveUser(adminUser);
+          }
+        }).catch(err => console.error('Background admin sync error:', err));
       } 
       // Check for test user login
       else if (username === TEST_USERNAME && password === TEST_PASSWORD) {
-        // Find or create test user
-        const existingUsers = await storageService.getUsers();
-        let testUser = existingUsers.find(u => u.id === 'test_user_1');
+        // Create test user object immediately
+        const testUser: User = {
+          id: 'test_user_1',
+          phoneNumber: '+998901234567',
+          name: 'Test User',
+          role: UserRole.USER,
+          balance: 0,
+          qrData: 'test_user_1',
+          createdAt: new Date().toISOString()
+        };
         
-        if (!testUser) {
-          testUser = {
-            id: 'test_user_1',
-            phoneNumber: '+998901234567',
-            name: 'Test User',
-            role: UserRole.USER,
-            balance: 0,
-            qrData: 'test_user_1',
-            createdAt: new Date().toISOString()
-          };
-          await storageService.saveUser(testUser);
-        }
+        // Login immediately for fast UX
         onLogin(testUser);
+        
+        // Sync with backend in background
+        storageService.getUsers().then(existingUsers => {
+          const backendTest = existingUsers.find(u => u.id === 'test_user_1');
+          if (backendTest) {
+            // Update session with backend data
+            localStorage.setItem('loyalty_session', JSON.stringify(backendTest));
+          } else {
+            // Save new test user to backend
+            storageService.saveUser(testUser);
+          }
+        }).catch(err => console.error('Background test user sync error:', err));
       } 
       else {
         setError('Invalid username or password');
@@ -127,21 +143,7 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
       const telegramId = String(tgUser.id);
       const qrDataValue = 'tg_' + telegramId; // Prefix to ensure it's treated as string
       
-      // Check if user already exists
-      const existingUsers = await storageService.getUsers(true);
-      let existingUser = existingUsers.find(u => String(u.id) === telegramId);
-      
-      if (existingUser) {
-        // Fix: Ensure existing user has qrData set correctly
-        if (!existingUser.qrData || existingUser.qrData === '' || existingUser.qrData === telegramId || String(existingUser.qrData) === telegramId) {
-          existingUser.qrData = qrDataValue;
-          await storageService.saveUser(existingUser);
-        }
-        onLogin(existingUser);
-        return;
-      }
-      
-      // Auto-create new user
+      // Create user object immediately
       const user: User = {
         id: telegramId,
         phoneNumber: '',
@@ -152,8 +154,28 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
         createdAt: new Date().toISOString(),
       };
       
-      await storageService.saveUser(user);
+      // Login immediately for fast UX
       onLogin(user);
+      
+      // Sync with backend in background
+      storageService.getUsers(true).then(existingUsers => {
+        let existingUser = existingUsers.find(u => String(u.id) === telegramId);
+        
+        if (existingUser) {
+          // Update session with backend data
+          localStorage.setItem('loyalty_session', JSON.stringify(existingUser));
+          
+          // Fix qrData if needed (don't wait for this)
+          if (!existingUser.qrData || existingUser.qrData === '' || existingUser.qrData === telegramId || String(existingUser.qrData) === telegramId) {
+            existingUser.qrData = qrDataValue;
+            storageService.saveUser(existingUser).catch(err => console.error('Background qrData update error:', err));
+          }
+        } else {
+          // Save new user to backend
+          storageService.saveUser(user).catch(err => console.error('Background user save error:', err));
+        }
+      }).catch(err => console.error('Background Telegram sync error:', err));
+      
     } catch (error) {
       console.error('Telegram auth error:', error);
       setError('Connection error. Please try again.');
@@ -336,7 +358,10 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
           </div>
         ) : (
           <div className="space-y-2">
-            {userTransactions.slice(0, 10).map(t => (
+            {userTransactions
+              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+              .slice(0, 10)
+              .map(t => (
               <div key={t.id} className="bg-white p-4 rounded-2xl border border-slate-50 flex justify-between items-center">
                 <div className="flex items-center gap-4">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${t.type === TransactionType.EARN ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
@@ -344,7 +369,9 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
                   </div>
                   <div>
                     <p className="font-bold text-slate-800 text-sm leading-none">{t.type === TransactionType.EARN ? 'Reward' : 'Used'}</p>
-                    <p className="text-[9px] text-slate-400 font-black uppercase mt-1">{new Date(t.timestamp).toLocaleDateString()}</p>
+                    <p className="text-[9px] text-slate-400 font-black uppercase mt-1">
+                      {new Date(t.timestamp).toLocaleDateString()} • {new Date(t.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
                   </div>
                 </div>
                 <span className="font-bold text-slate-800">{formatPrice(t.cashbackAmount)}</span>
@@ -382,24 +409,34 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
-      const txs = await storageService.getTransactions();
-      const usrs = await storageService.getUsers();
-      
-      // Remove duplicate transactions by ID (keep most recent)
-      const uniqueTxs = Array.from(
-        new Map(txs.map(t => [t.id, t])).values()
-      );
-      
-      setAllTransactions(uniqueTxs);
-      setAllUsers(usrs);
-      
-      if (uniqueTxs.length > 0) {
-        setInsights("System ready for first scan.");
-      } else {
-        setInsights("System ready for first scan.");
+      try {
+        const [txs, usrs] = await Promise.all([
+          storageService.getTransactions(),
+          storageService.getUsers()
+        ]);
+        
+        // Remove duplicate transactions by ID (keep most recent)
+        const uniqueTxs = Array.from(
+          new Map(txs.map(t => [t.id, t])).values()
+        );
+        
+        setAllTransactions(uniqueTxs);
+        setAllUsers(usrs);
+        
+        if (uniqueTxs.length > 0) {
+          setInsights("System ready for first scan.");
+        } else {
+          setInsights("System ready for first scan.");
+        }
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        setInsights("Connection error. Retrying...");
+      } finally {
+        setIsLoadingData(false);
       }
     };
     fetchData();
