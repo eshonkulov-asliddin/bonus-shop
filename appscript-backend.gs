@@ -4,6 +4,7 @@
 const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID'; // Replace with your Google Sheet ID
 const USERS_SHEET = 'Users';
 const TRANSACTIONS_SHEET = 'Transactions';
+const SETTINGS_SHEET = 'Settings';
 
 // Enable CORS
 function doGet(e) {
@@ -17,6 +18,9 @@ function doGet(e) {
         break;
       case 'getTransactions':
         result = getTransactions();
+        break;
+      case 'getLang':
+        result = getLang();
         break;
       default:
         result = { error: 'Invalid action' };
@@ -32,14 +36,17 @@ function doPost(e) {
   
   try {
     let result;
-    const data = JSON.parse(e.postData.contents);
-    
+    const data = JSON.parse(e.postData && e.postData.contents ? e.postData.contents : '{}');
+
     switch(action) {
       case 'saveUser':
         result = saveUser(data);
         break;
       case 'saveTransaction':
         result = saveTransaction(data);
+        break;
+      case 'setLang':
+        result = setLang(data);
         break;
       default:
         result = { error: 'Invalid action' };
@@ -91,6 +98,15 @@ function initializeSheets() {
   if (!transactionsSheet) {
     transactionsSheet = ss.insertSheet(TRANSACTIONS_SHEET);
     transactionsSheet.appendRow(['ID', 'User ID', 'Amount', 'Cashback Amount', 'Type', 'Timestamp', 'Admin ID']);
+  }
+
+  // Create Settings sheet for app-level preferences
+  let settingsSheet = ss.getSheetByName(SETTINGS_SHEET);
+  if (!settingsSheet) {
+    settingsSheet = ss.insertSheet(SETTINGS_SHEET);
+    settingsSheet.appendRow(['Key', 'Value']);
+    // default language
+    settingsSheet.appendRow(['lang', 'uz']);
   }
 }
 
@@ -156,6 +172,23 @@ function getTransactions() {
   }
   
   return transactions;
+}
+
+// Get language preference
+function getLang() {
+  const ss = getSpreadsheet();
+  const sheet = ss.getSheetByName(SETTINGS_SHEET);
+  if (!sheet) {
+    initializeSheets();
+    return getLang();
+  }
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === 'lang') {
+      return { lang: String(data[i][1] || 'uz') };
+    }
+  }
+  return { lang: 'uz' };
 }
 
 // Save or update user
@@ -268,6 +301,31 @@ function saveTransaction(transaction) {
   }
   
   return { success: true, transaction: transaction };
+}
+
+// Set language preference
+function setLang(payload) {
+  const lang = String(payload && payload.lang ? payload.lang : 'uz');
+  const ss = getSpreadsheet();
+  const sheet = ss.getSheetByName(SETTINGS_SHEET);
+  if (!sheet) {
+    initializeSheets();
+  }
+  const data = sheet.getDataRange().getValues();
+  let rowIndex = -1;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === 'lang') {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+  if (rowIndex > 0) {
+    sheet.getRange(rowIndex, 2).setValue(lang);
+  } else {
+    sheet.appendRow(['lang', lang]);
+  }
+  SpreadsheetApp.flush();
+  return { success: true, lang };
 }
 
 // Setup function (run this once manually)

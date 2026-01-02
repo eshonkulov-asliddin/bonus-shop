@@ -5,6 +5,8 @@ import { QRCodeDisplay } from './components/QRCodeDisplay';
 import { Scanner } from './components/Scanner';
 import { TelegramSignIn } from './components/TelegramSignIn';
 import { formatPrice } from './utils';
+import { useI18n } from './services/i18n';
+import { LanguageSelect } from './components/LanguageSelect';
 
 const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'success' }> = ({ children, className = '', variant = 'primary', ...props }) => {
   const variants = {
@@ -37,6 +39,7 @@ const Card: React.FC<{ children: React.ReactNode, title?: string, className?: st
 );
 
 const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
+  const { t, lang, setLang } = useI18n();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showAdminLogin, setShowAdminLogin] = useState(false);
@@ -55,7 +58,7 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
 
     try {
       if (!username || !password) {
-        setError('Please enter username and password');
+        setError(t('loginMissing'));
         setLoading(false);
         return;
       }
@@ -105,11 +108,11 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
         }).catch(err => console.error('Background test user sync error:', err));
       } 
       else {
-        setError('Invalid username or password');
+        setError(t('invalidCredentials'));
       }
     } catch (error) {
       console.error('Admin login error:', error);
-      setError('Connection error. Please try again.');
+      setError(t('connectionError'));
     } finally {
       setLoading(false);
     }
@@ -152,7 +155,7 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
       
     } catch (error) {
       console.error('Telegram auth error:', error);
-      setError('Connection error. Please try again.');
+      setError(t('connectionError'));
     } finally {
       setLoading(false);
     }
@@ -167,8 +170,11 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
             </svg>
           </div>
-          <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Bonus</h1>
-          <p className="text-slate-400 font-bold mt-2 uppercase text-[10px] tracking-[0.2em]">The Local Shop Network</p>
+          <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">{t('appName')}</h1>
+          <p className="text-slate-400 font-bold mt-2 uppercase text-[10px] tracking-[0.2em]">{t('appTagline')}</p>
+        </div>
+        <div className="flex justify-end mb-4">
+          <LanguageSelect size="sm" />
         </div>
 
         <Card>
@@ -176,22 +182,22 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
             // Admin Login Form
             <form onSubmit={handleAdminLogin} className="space-y-5">
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Username</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{t('usernameLabel')}</label>
                 <input 
                   type="text" 
                   className="w-full p-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-800" 
-                  placeholder="Enter admin username"
+                  placeholder={t('usernamePlaceholder')}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   autoFocus
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Password</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{t('passwordLabel')}</label>
                 <input 
                   type="password" 
                   className="w-full p-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-800" 
-                  placeholder="Enter password"
+                  placeholder={t('passwordPlaceholder')}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
@@ -200,7 +206,7 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
               {error && <div className="p-3 bg-rose-50 text-rose-600 text-xs font-bold rounded-xl text-center">{error}</div>}
 
               <Button type="submit" className="w-full h-14" disabled={loading}>
-                {loading ? 'Signing in...' : 'Admin Login'}
+                {loading ? t('signInLoading') : t('adminLogin')}
               </Button>
               
               <button 
@@ -208,15 +214,15 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
                 onClick={() => { setShowAdminLogin(false); setError(''); setUsername(''); setPassword(''); }}
                 className="w-full text-slate-500 text-sm font-semibold hover:text-indigo-600 transition mt-4"
               >
-                ← Back to User Login
+                {t('backToUserLogin')}
               </button>
             </form>
           ) : (
             // User Login (Telegram Only)
             <div className="space-y-6">
               <div className="text-center py-6">
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Customer Login</h3>
-                <p className="text-slate-500 text-sm">Sign in with Telegram to access your cashback rewards</p>
+                <h3 className="text-lg font-bold text-slate-800 mb-2">{t('userLogin')}</h3>
+                <p className="text-slate-500 text-sm">{t('telegramPrompt')}</p>
               </div>
 
               {error && <div className="p-3 bg-rose-50 text-rose-600 text-xs font-bold rounded-xl text-center">{error}</div>}
@@ -233,7 +239,7 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                   </svg>
-                  Admin Access
+                  {t('adminLogin')}
                 </button>
               </div>
             </div>
@@ -245,6 +251,7 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
 };
 
 const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogout: () => void }> = ({ user, transactions, onLogout }) => {
+  const { t } = useI18n();
   const [showQR, setShowQR] = useState(false);
   
   useEffect(() => {
@@ -271,10 +278,10 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
     <div className="w-full max-w-md mx-auto p-4 md:p-6 space-y-6 md:space-y-8 pb-24">
       <div className="flex justify-between items-start">
         <div className="space-y-1">
-          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">My Account</p>
+          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">{t('myAccount')}</p>
           <h2 className="text-xl md:text-2xl font-black text-slate-900">{user.name}</h2>
           <span className={`inline-flex px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${stats.tierColor}`}>
-            {stats.tier} Status
+            {t(stats.tier === 'Gold' ? 'tierGold' : stats.tier === 'Silver' ? 'tierSilver' : 'tierBronze')} {t('status')}
           </span>
         </div>
         <button onClick={onLogout} className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-2xl border border-slate-100 flex items-center justify-center text-slate-400 hover:text-rose-500 transition shadow-sm">
@@ -292,9 +299,9 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
               </svg>
             </div>
-            <p className="text-[9px] font-black uppercase tracking-[0.3em] opacity-60">Digital Member Card</p>
+            <p className="text-[9px] font-black uppercase tracking-[0.3em] opacity-60">{t('memberCard')}</p>
           </div>
-          <p className="text-indigo-100 text-[10px] font-bold uppercase tracking-widest mb-1 opacity-80">Available Rewards</p>
+          <p className="text-indigo-100 text-[10px] font-bold uppercase tracking-widest mb-1 opacity-80">{t('availableRewards')}</p>
           <div className="flex items-baseline gap-1">
             <span className="text-3xl md:text-4xl font-black tabular-nums tracking-tight">{formatPrice(user.balance)}</span>
           </div>
@@ -312,8 +319,8 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
             </div>
             <div>
-                <p className="text-sm font-black">Pay or Reward</p>
-                <p className="text-[10px] opacity-60 font-bold uppercase tracking-widest">Tap to Scan</p>
+                <p className="text-sm font-black">{t('payOrReward')}</p>
+                <p className="text-[10px] opacity-60 font-bold uppercase tracking-widest">{t('tapToScan')}</p>
             </div>
           </div>
           <svg className="w-5 h-5 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
@@ -322,32 +329,32 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
 
       <div className="space-y-4">
         <div className="flex justify-between items-center px-2">
-            <h3 className="text-lg font-black text-slate-800 tracking-tight">Recent Activity</h3>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total: {formatPrice(stats.totalEarned)}</span>
+            <h3 className="text-lg font-black text-slate-800 tracking-tight">{t('recentActivity')}</h3>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('total')}: {formatPrice(stats.totalEarned)}</span>
         </div>
         {userTransactions.length === 0 ? (
           <div className="bg-white rounded-[2rem] p-10 text-center border-2 border-dashed border-slate-100">
-            <p className="text-slate-400 font-bold text-sm">No activity yet.</p>
+            <p className="text-slate-400 font-bold text-sm">{t('noActivity')}</p>
           </div>
         ) : (
           <div className="space-y-2">
             {userTransactions
               .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
               .slice(0, 10)
-              .map(t => (
-              <div key={t.id} className="bg-white p-4 rounded-2xl border border-slate-50 flex justify-between items-center">
+              .map(tx => (
+              <div key={tx.id} className="bg-white p-4 rounded-2xl border border-slate-50 flex justify-between items-center">
                 <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${t.type === TransactionType.EARN ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                    {t.type === TransactionType.EARN ? '+' : '-'}
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${tx.type === TransactionType.EARN ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                    {tx.type === TransactionType.EARN ? '+' : '-'}
                   </div>
                   <div>
-                    <p className="font-bold text-slate-800 text-sm leading-none">{t.type === TransactionType.EARN ? 'Reward' : 'Used'}</p>
+                    <p className="font-bold text-slate-800 text-sm leading-none">{tx.type === TransactionType.EARN ? t('reward') : t('used')}</p>
                     <p className="text-[9px] text-slate-400 font-black uppercase mt-1">
-                      {new Date(t.timestamp).toLocaleDateString()} • {new Date(t.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(tx.timestamp).toLocaleDateString()} • {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
                 </div>
-                <span className="font-bold text-slate-800">{formatPrice(t.cashbackAmount)}</span>
+                <span className="font-bold text-slate-800">{formatPrice(tx.cashbackAmount)}</span>
               </div>
             ))}
           </div>
@@ -359,12 +366,12 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
         <div className="fixed inset-0 z-[100] bg-white flex items-center justify-center p-6">
             <div className="w-full max-w-sm text-center space-y-6">
                 <div className="flex flex-col items-center">
-                    <p className="text-slate-400 text-xs font-black uppercase tracking-[0.2em] mb-4">Show to Merchant</p>
+                    <p className="text-slate-400 text-xs font-black uppercase tracking-[0.2em] mb-4">{t('showToSeller')}</p>
                     <QRCodeDisplay value={user.qrData} />
                     <h4 className="mt-6 text-xl font-black text-slate-900">{user.name}</h4>
                 </div>
                 <Button variant="secondary" className="w-full" onClick={() => setShowQR(false)}>
-                    Close
+                    {t('close')}
                 </Button>
             </div>
         </div>
@@ -374,15 +381,22 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
 };
 
 const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin, onLogout }) => {
+  const { t, lang, setLang } = useI18n();
   const [showScanner, setShowScanner] = useState(false);
   const [scanMode, setScanMode] = useState<TransactionType | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [amount, setAmount] = useState('');
-  const [insights, setInsights] = useState('Terminal syncing...');
+  const [insights, setInsights] = useState(t('systemReady'));
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
+  
+  // Smart loading: show limited items by default
+  const [showAllTransactions, setShowAllTransactions] = useState(false);
+  const [showAllUsers, setShowAllUsers] = useState(false);
+  const INITIAL_TX_LIMIT = 5;
+  const INITIAL_USER_LIMIT = 6;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -400,13 +414,13 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
         setAllUsers(usrs);
         
         if (uniqueTxs.length > 0) {
-          setInsights("System ready for first scan.");
+          setInsights(t('systemReady'));
         } else {
-          setInsights("System ready for first scan.");
+          setInsights(t('systemReady'));
         }
       } catch (error) {
         console.error('Error fetching data:', error);
-        setInsights("Connection error. Retrying...");
+        setInsights(t('connectionErrorRetrying'));
       } finally {
         setIsLoadingData(false);
       }
@@ -424,7 +438,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
     if (users.length === 0) {
       setShowScanner(false);
       setScanMode(null);
-      alert("No users found in database. Please check Google Sheets connection.");
+      alert(t('noUsersAlert'));
       return;
     }
     
@@ -440,7 +454,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
     } else {
       setShowScanner(false);
       setScanMode(null);
-      alert("Unknown User QR\nScanned: '" + qrData + "'\nKnown QR codes: " + users.map(u => "'" + u.qrData + "'").join(", "));
+      alert(t('unknownUserQR') + "\n" + "Scanned: '" + qrData + "'\nKnown QR codes: " + users.map(u => "'" + u.qrData + "'").join(", "));
     }
   };
 
@@ -494,12 +508,12 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
             console.error('Error saving transaction:', error);
             setAllTransactions(prev => prev.filter(t => t.id !== newTx.id));
             setAllUsers(prev => prev.map(u => u.id === selectedUser.id ? selectedUser : u));
-            alert('Failed to save transaction. Please try again.');
+            alert(t('failedSaveTransaction'));
           });
           
         } catch (error) {
           console.error('Error processing transaction:', error);
-          alert('Failed to process transaction. Please try again.');
+          alert(t('failedProcessTransaction'));
           setIsProcessing(false);
         }
     };
@@ -518,13 +532,16 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-7.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
           </div>
           <div>
-            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Terminal Hub</p>
-            <h2 className="text-xl font-black text-slate-900 leading-tight">Merchant Access</h2>
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{t('terminalHub')}</p>
+            <h2 className="text-xl font-black text-slate-900 leading-tight">{t('merchantAccess')}</h2>
           </div>
         </div>
-        <button onClick={onLogout} className="w-full sm:w-auto px-5 py-2.5 bg-slate-50 hover:bg-rose-50 rounded-xl text-slate-500 hover:text-rose-600 font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-2">
-          Lock Session
-        </button>
+        <div className="flex items-center gap-3 sm:gap-2">
+          <LanguageSelect size="sm" />
+          <button onClick={onLogout} className="w-full sm:w-auto px-5 py-2.5 bg-slate-50 hover:bg-rose-50 rounded-xl text-slate-500 hover:text-rose-600 font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-2">
+            {t('lockSession')}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -541,9 +558,9 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                         <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                             <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
                         </div>
-                        <h3 className="text-xl font-black mb-2">1. Give Reward</h3>
-                        <p className="text-emerald-100/70 text-xs font-bold leading-relaxed max-w-[160px]">Reward a purchase. System calculates 1% bonus.</p>
-                        <div className="mt-6 px-4 py-2 bg-black/10 rounded-full text-[10px] font-black uppercase tracking-widest">Tap to Scan</div>
+                        <h3 className="text-xl font-black mb-2">{t('giveReward')}</h3>
+                        <p className="text-emerald-100/70 text-xs font-bold leading-relaxed max-w-[160px]">{t('giveRewardHint')}</p>
+                        <div className="mt-6 px-4 py-2 bg-black/10 rounded-full text-[10px] font-black uppercase tracking-widest">{t('tapToScan')}</div>
                     </button>
 
                     <button 
@@ -553,9 +570,9 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                         <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                             <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         </div>
-                        <h3 className="text-xl font-black mb-2">2. Use Balance</h3>
-                        <p className="text-indigo-100/70 text-xs font-bold leading-relaxed max-w-[160px]">Redeem existing points to pay for a bill.</p>
-                        <div className="mt-6 px-4 py-2 bg-black/10 rounded-full text-[10px] font-black uppercase tracking-widest">Tap to Scan</div>
+                        <h3 className="text-xl font-black mb-2">{t('useBalance')}</h3>
+                        <p className="text-indigo-100/70 text-xs font-bold leading-relaxed max-w-[160px]">{t('useBalanceHint')}</p>
+                        <div className="mt-6 px-4 py-2 bg-black/10 rounded-full text-[10px] font-black uppercase tracking-widest">{t('tapToScan')}</div>
                     </button>
                 </div>
             )}
@@ -568,12 +585,12 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                         <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-4 border-b border-slate-50">
                             <div>
                                 <span className={`text-[9px] font-black uppercase ${scanMode === TransactionType.EARN ? 'text-emerald-500' : 'text-indigo-500'} tracking-widest bg-slate-50 px-2 py-0.5 rounded`}>
-                                    Customer ID: {selectedUser.phoneNumber}
+                                  {t('customerId')}: {selectedUser.phoneNumber}
                                 </span>
                                 <h4 className="text-2xl font-black text-slate-900 mt-1">{selectedUser.name}</h4>
                             </div>
                             <div className={`${scanMode === TransactionType.EARN ? 'bg-emerald-50 text-emerald-600' : 'bg-indigo-50 text-indigo-600'} px-5 py-3 rounded-2xl text-right w-full sm:w-auto`}>
-                                <p className="text-[9px] font-black opacity-70 uppercase tracking-widest mb-1">Current Balance</p>
+                                <p className="text-[9px] font-black opacity-70 uppercase tracking-widest mb-1">{t('currentBalance')}</p>
                                 <p className="text-2xl font-black tabular-nums">{formatPrice(selectedUser.balance)}</p>
                             </div>
                         </div>
@@ -581,7 +598,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
-                                    {scanMode === TransactionType.EARN ? 'Total Bill Price' : 'Price to Deduct'}
+                                    {scanMode === TransactionType.EARN ? t('totalBillPrice') : t('priceToDeduct')}
                                 </label>
                                 <div className="relative">
                                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-black text-slate-400">UZS</span>
@@ -599,13 +616,13 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                             {/* Live Calculation Preview */}
                             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center">
                                 <div>
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">New Balance Prediction</p>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('newBalancePrediction')}</p>
                                     <p className={`text-lg font-black ${isInvalidRedeem ? 'text-rose-500' : 'text-slate-800'}`}>
                                         {formatPrice(selectedUser.balance + (scanMode === TransactionType.EARN ? potentialReward : -potentialDeduction))}
                                     </p>
                                 </div>
                                 <div className="text-right">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Transaction Impact</p>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('transactionImpact')}</p>
                                     <p className={`text-lg font-black ${scanMode === TransactionType.EARN ? 'text-emerald-500' : 'text-indigo-600'}`}>
                                         {scanMode === TransactionType.EARN ? '+' : '-'}{formatPrice(scanMode === TransactionType.EARN ? potentialReward : potentialDeduction)}
                                     </p>
@@ -613,9 +630,9 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                             </div>
 
                             {isInvalidRedeem && (
-                                <div className="p-3 bg-rose-50 rounded-xl text-rose-600 text-[10px] font-black uppercase text-center tracking-widest animate-pulse">
-                                    Error: Insufficient Customer Balance
-                                </div>
+                              <div className="p-3 bg-rose-50 rounded-xl text-rose-600 text-[10px] font-black uppercase text-center tracking-widest animate-pulse">
+                                {t('invalidRedeem')}
+                              </div>
                             )}
                         </div>
 
@@ -626,10 +643,10 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                                 onClick={processTransaction} 
                                 disabled={!amount || parseFloat(amount) <= 0 || isInvalidRedeem || isProcessing}
                             >
-                                {isProcessing ? 'Processing...' : (scanMode === TransactionType.EARN ? `Reward +${formatPrice(potentialReward)}` : `Deduct -${formatPrice(potentialDeduction)}`)}
+                                {isProcessing ? t('processing') : (scanMode === TransactionType.EARN ? `${t('rewardPlus')}${formatPrice(potentialReward)}` : `${t('deductMinus')}${formatPrice(potentialDeduction)}`)}
                             </Button>
                             <Button variant="ghost" className="h-20 sm:w-32" onClick={() => { setSelectedUser(null); setScanMode(null); setAmount(''); }} disabled={isProcessing}>
-                                Cancel
+                                {t('cancel')}
                             </Button>
                         </div>
                     </div>
@@ -637,38 +654,47 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
               </div>
             )}
 
-            <Card title="Latest Transactions" className="px-0 md:px-6">
+            <Card title={t('latestTransactions')} className="px-0 md:px-6" headerAction={
+                allTransactions.length > INITIAL_TX_LIMIT && (
+                  <button 
+                    onClick={() => setShowAllTransactions(!showAllTransactions)}
+                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 uppercase tracking-wider transition-colors"
+                  >
+                    {showAllTransactions ? t('showLess') : `${t('showAll')} (${allTransactions.length})`}
+                  </button>
+                )
+            }>
                 <div className="overflow-x-auto scrollbar-hide">
                     <table className="w-full text-left min-w-[480px]">
                         <thead className="text-[9px] text-slate-400 font-black uppercase tracking-widest border-b border-slate-50">
                             <tr>
-                                <th className="p-4 md:p-6">Customer</th>
-                                <th className="p-4 md:p-6">Type</th>
-                                <th className="p-4 md:p-6">Adjustment</th>
-                                <th className="p-4 md:p-6 text-right">Time</th>
+                                <th className="p-4 md:p-6">{t('customer')}</th>
+                                <th className="p-4 md:p-6">{t('type')}</th>
+                                <th className="p-4 md:p-6">{t('adjustment')}</th>
+                                <th className="p-4 md:p-6 text-right">{t('time')}</th>
                             </tr>
                         </thead>
                         <tbody className="text-[11px] md:text-xs">
                             {allTransactions
                               .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-                              .slice(0, 10)
-                              .map(t => {
-                                const customer = allUsers.find(u => u.id === t.userId);
+                              .slice(0, showAllTransactions ? undefined : INITIAL_TX_LIMIT)
+                              .map(tx => {
+                                const customer = allUsers.find(u => u.id === tx.userId);
                                 return (
-                                    <tr key={t.id} className="border-b last:border-0 border-slate-50 hover:bg-slate-50 transition-colors">
+                                    <tr key={tx.id} className="border-b last:border-0 border-slate-50 hover:bg-slate-50 transition-colors">
                                         <td className="p-4 md:p-6">
-                                            <p className="font-bold text-slate-800">{customer?.name || 'Deleted User'}</p>
-                                            <p className="text-[9px] text-slate-400">{customer?.phoneNumber}</p>
+                                            <p className="font-bold text-slate-800">{customer?.name || t('deletedUser')}</p>
+                                            <p className="text-[9px] text-slate-400">{customer?.phoneNumber || t('noPhone')}</p>
                                         </td>
                                         <td className="p-4 md:p-6">
-                                            <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase ${t.type === TransactionType.EARN ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                                                {t.type}
+                                            <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase ${tx.type === TransactionType.EARN ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                                                {tx.type}
                                             </span>
                                         </td>
                                         <td className="p-4 md:p-6 font-black tabular-nums">
-                                            {t.type === TransactionType.EARN ? '+' : '-'}{formatPrice(t.cashbackAmount)}
+                                            {tx.type === TransactionType.EARN ? '+' : '-'}{formatPrice(tx.cashbackAmount)}
                                         </td>
-                                        <td className="p-4 md:p-6 text-slate-400 text-[10px] text-right">{new Date(t.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                                        <td className="p-4 md:p-6 text-slate-400 text-[10px] text-right">{new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
                                     </tr>
                                 );
                             })}
@@ -676,29 +702,79 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                     </table>
                 </div>
             </Card>
+
+            <Card title={t('userCashbackOverview')} className="px-0 md:px-6" headerAction={
+                allUsers.filter(u => u.role !== UserRole.ADMIN).length > INITIAL_USER_LIMIT && (
+                  <button 
+                    onClick={() => setShowAllUsers(!showAllUsers)}
+                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 uppercase tracking-wider transition-colors"
+                  >
+                    {showAllUsers ? t('showLess') : `${t('showAll')} (${allUsers.filter(u => u.role !== UserRole.ADMIN).length})`}
+                  </button>
+                )
+            }>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 px-4 md:px-0">
+                    {allUsers
+                        .filter(u => u.role !== UserRole.ADMIN)
+                        .sort((a, b) => b.balance - a.balance)
+                        .slice(0, showAllUsers ? undefined : INITIAL_USER_LIMIT)
+                        .map(u => {
+                            const userTxs = allTransactions.filter(tx => tx.userId === u.id);
+                            const earned = userTxs.filter(tx => tx.type === TransactionType.EARN).reduce((sum, tx) => sum + tx.cashbackAmount, 0);
+                            const used = userTxs.filter(tx => tx.type === TransactionType.REDEEM).reduce((sum, tx) => sum + tx.cashbackAmount, 0);
+                            
+                            return (
+                                <div key={u.id} className="p-4 bg-slate-50 rounded-2xl hover:bg-slate-100 transition-colors border border-slate-100">
+                                    <div className="flex justify-between items-start mb-3">
+                                        <div>
+                                            <p className="font-bold text-slate-800 text-sm">{u.name}</p>
+                                            <p className="text-[9px] text-slate-400 uppercase font-black">{u.phoneNumber || t('noPhone')}</p>
+                                        </div>
+                                        <div className={`px-3 py-1.5 rounded-lg text-xs font-black ${u.balance > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
+                                            {formatPrice(u.balance)}
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-4 text-[10px]">
+                                        <div>
+                                            <span className="text-slate-400 font-bold">{t('earned')}: </span>
+                                            <span className="text-emerald-600 font-black">{formatPrice(earned)}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-slate-400 font-bold">{t('used')}: </span>
+                                            <span className="text-rose-600 font-black">{formatPrice(used)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                </div>
+            </Card>
         </div>
 
         {/* Intelligence & Stats Sidebar */}
         <div className="lg:col-span-4 space-y-6 order-1 lg:order-2">
-            <Card className="bg-slate-900 border-none text-white shadow-2xl relative overflow-hidden">
+            <Card className="bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 border-0 text-white shadow-2xl shadow-indigo-200 relative overflow-hidden">
+                <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRjMC0yLjIwOS0xLjc5MS00LTQtNHMtNCAxLjc5MS00IDQgMS43OTEgNCA0IDQgNC0xLjc5MSA0LTR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-30"></div>
+                <div className="absolute -right-16 -top-16 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
+                <div className="absolute -left-8 -bottom-8 w-32 h-32 bg-pink-400/20 rounded-full blur-2xl"></div>
                 <div className="relative z-10">
                     <div className="flex items-center gap-2 mb-6">
-                        <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white">
+                        <div className="w-8 h-8 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center text-white">
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                         </div>
-                        <span className="text-[9px] font-black uppercase tracking-[0.3em] text-indigo-200">Terminal IQ</span>
+                        <span className="text-xs font-black uppercase tracking-[0.3em] text-white/90">{t('terminalIq')}</span>
                     </div>
-                    <p className="text-sm md:text-base font-bold leading-relaxed mb-8 text-slate-50">
+                    <p className="text-base md:text-lg font-bold leading-relaxed mb-8 text-white/90">
                         "{insights}"
                     </p>
                     <div className="space-y-3">
-                        <div className="flex justify-between items-center py-2.5 border-b border-white/5">
-                            <span className="text-[10px] text-white/40 font-black uppercase tracking-wider">Registered Members</span>
-                            <span className="font-black text-sm">{allUsers.length - 1}</span>
+                        <div className="flex justify-between items-center py-2.5 border-b border-white/20">
+                            <span className="text-xs text-white/70 font-bold uppercase tracking-wider">{t('registeredMembers')}</span>
+                            <span className="font-black text-lg text-white">{allUsers.length - 1}</span>
                         </div>
                         <div className="flex justify-between items-center py-2.5">
-                            <span className="text-[10px] text-white/40 font-black uppercase tracking-wider">Total Shop Volume</span>
-                            <span className="font-black text-sm text-indigo-400">${allTransactions.reduce((s,t) => s + t.amount, 0).toLocaleString()}</span>
+                            <span className="text-xs text-white/70 font-bold uppercase tracking-wider">{t('totalShopVolume')}</span>
+                            <span className="font-black text-lg text-white">{formatPrice(allTransactions.reduce((s,t) => s + t.amount, 0))}</span>
                         </div>
                     </div>
                 </div>
@@ -709,8 +785,8 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-7.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
                 </div>
                 <div>
-                    <p className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Active Protection</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Encrypted Sessions</p>
+                    <p className="text-[10px] font-black text-slate-800 uppercase tracking-widest">{t('activeProtection')}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">{t('encryptedSessions')}</p>
                 </div>
             </div>
         </div>
@@ -722,6 +798,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
 };
 
 export default function App() {
+  const { t } = useI18n();
   const [user, setUser] = useState<User | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -839,7 +916,7 @@ export default function App() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
             </svg>
           </div>
-          <p className="text-slate-400 font-bold text-sm uppercase tracking-wider">Loading...</p>
+          <p className="text-slate-400 font-bold text-sm uppercase tracking-wider">{t('loading')}</p>
         </div>
       </div>
     );
