@@ -686,9 +686,9 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                         <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white">
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                         </div>
-                        <span className="text-[9px] font-black uppercase tracking-[0.3em] text-indigo-400">Terminal IQ</span>
+                        <span className="text-[9px] font-black uppercase tracking-[0.3em] text-indigo-200">Terminal IQ</span>
                     </div>
-                    <p className="text-sm md:text-base font-bold leading-relaxed mb-8 text-slate-100">
+                    <p className="text-sm md:text-base font-bold leading-relaxed mb-8 text-slate-50">
                         "{insights}"
                     </p>
                     <div className="space-y-3">
