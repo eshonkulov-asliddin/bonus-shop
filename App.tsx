@@ -544,6 +544,56 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
     }
   }, []);
 
+  // Handle Telegram Mini App resume from background (screen off/on)
+  useEffect(() => {
+    let lastHiddenTime = 0;
+    
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // App going to background
+        lastHiddenTime = Date.now();
+      } else {
+        // App coming back to foreground
+        const hiddenDuration = Date.now() - lastHiddenTime;
+        
+        // If hidden for more than 30 seconds, soft refresh data
+        if (hiddenDuration > 30000) {
+          console.log('App resumed after', Math.round(hiddenDuration / 1000), 'seconds - refreshing data');
+          
+          // Refresh data in background
+          storageService.getAllData().then(({ users, transactions }) => {
+            const uniqueTxs = Array.from(new Map(transactions.map(tx => [tx.id, tx])).values());
+            setAllUsers(users);
+            setAllTransactions(uniqueTxs);
+          }).catch(err => {
+            console.error('Resume refresh failed:', err);
+          });
+        }
+        
+        // If hidden for more than 5 minutes, force full page reload
+        if (hiddenDuration > 300000) {
+          console.log('App was paused for too long - forcing reload');
+          window.location.reload();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Also handle Telegram WebApp events if available
+    const tgWebApp = (window as any).Telegram?.WebApp;
+    if (tgWebApp) {
+      tgWebApp.onEvent?.('viewportChanged', () => {
+        // Viewport changed - app might be resuming
+        console.log('Telegram viewport changed');
+      });
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   const launchScanner = (mode: TransactionType) => {
     setScanMode(mode);
     setShowScanner(true);
@@ -925,7 +975,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                     <table className="w-full text-left min-w-[480px]">
                         <thead className="text-[9px] text-slate-400 font-black uppercase tracking-widest border-b border-slate-50">
                             <tr>
-                                <th className="p-4 md:p-6">{t('customer')}</th>
+                                <th className="p-4 md:p-6 w-[40%]">{t('customer')}</th>
                                 <th className="p-4 md:p-6">{t('type')}</th>
                                 <th className="p-4 md:p-6">{t('adjustment')}</th>
                                 <th className="p-4 md:p-6 text-right">{t('time')}</th>
@@ -938,19 +988,19 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                                 const customer = userMap.get(tx.userId);
                                 return (
                                     <tr key={tx.id} className="border-b last:border-0 border-slate-50 hover:bg-slate-50 transition-colors">
-                                        <td className="p-4 md:p-6">
-                                            <p className="font-bold text-slate-800">{customer?.name || t('deletedUser')}</p>
-                                            <p className="text-[9px] text-slate-400">{customer?.phoneNumber || t('noPhone')}</p>
+                                        <td className="p-4 md:p-6 max-w-[150px]">
+                                            <p className="font-bold text-slate-800 truncate">{customer?.name || t('deletedUser')}</p>
+                                            <p className="text-[9px] text-slate-400 truncate">{customer?.phoneNumber || t('noPhone')}</p>
                                         </td>
                                         <td className="p-4 md:p-6">
                                             <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase ${tx.type === TransactionType.EARN ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
                                                 {tx.type}
                                             </span>
                                         </td>
-                                        <td className="p-4 md:p-6 font-black tabular-nums">
+                                        <td className="p-4 md:p-6 font-black tabular-nums whitespace-nowrap">
                                             {tx.type === TransactionType.EARN ? '+' : '-'}{formatPrice(tx.cashbackAmount)}
                                         </td>
-                                        <td className="p-4 md:p-6 text-slate-400 text-[10px] text-right">{new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                                        <td className="p-4 md:p-6 text-slate-400 text-[10px] text-right whitespace-nowrap">{new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
                                     </tr>
                                 );
                             })}
@@ -1067,7 +1117,14 @@ export default function App() {
           setIsLoading(false);
           
           if (storedUser.role !== UserRole.ADMIN) {
-            storageService.getTransactions().then(txs => {
+            // FAST: Load cached transactions immediately
+            const { transactions: cachedTxs } = storageService.getAllDataFast();
+            if (cachedTxs.length > 0) {
+              setTransactions(cachedTxs);
+            }
+            
+            // Then refresh in background
+            storageService.getTransactions(true).then(txs => {
               setTransactions(txs);
             }).catch(err => console.error('Error loading transactions:', err));
           }
@@ -1095,7 +1152,14 @@ export default function App() {
     localStorage.setItem('loyalty_session', JSON.stringify(u));
     
     if (u.role !== UserRole.ADMIN) {
-      storageService.getTransactions().then(txs => {
+      // FAST: Load cached transactions immediately
+      const { transactions: cachedTxs } = storageService.getAllDataFast();
+      if (cachedTxs.length > 0) {
+        setTransactions(cachedTxs);
+      }
+      
+      // Then refresh in background
+      storageService.getTransactions(true).then(txs => {
         setTransactions(txs);
       }).catch(err => console.error('Error loading transactions:', err));
     }
