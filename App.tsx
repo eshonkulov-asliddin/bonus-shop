@@ -400,7 +400,7 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
             <div className="w-full max-w-sm text-center space-y-4 sm:space-y-6 py-4">
                 <div className="flex flex-col items-center">
                     <p className="text-slate-400 text-[10px] sm:text-xs font-black uppercase tracking-[0.15em] sm:tracking-[0.2em] mb-3 sm:mb-4">{t('showToSeller')}</p>
-                    <QRCodeDisplay value={user.qrData} userName={user.name} downloadLabel={t('downloadQR')} />
+                    <QRCodeDisplay value={user.qrData} screenshotHint={t('screenshotHint')} />
                     <h4 className="mt-4 sm:mt-6 text-lg sm:text-xl font-black text-slate-900">{user.name}</h4>
                 </div>
                 <Button variant="secondary" className="w-full" onClick={() => setShowQR(false)}>

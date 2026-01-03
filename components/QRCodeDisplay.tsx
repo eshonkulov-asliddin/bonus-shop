@@ -1,111 +1,17 @@
 
-import React, { useRef, useCallback } from 'react';
+import React from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 
 interface QRCodeDisplayProps {
   value: string;
   size?: number;
-  userName?: string;
-  downloadLabel?: string;
+  screenshotHint?: string;
 }
 
-export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ value, size = 220, userName = 'cashback', downloadLabel = 'Download QR' }) => {
-  const qrRef = useRef<HTMLDivElement>(null);
-
-  const handleDownload = useCallback(() => {
-    const svg = qrRef.current?.querySelector('svg');
-    if (!svg) return;
-
-    // Create canvas - always use high res for download
-    const downloadSize = 280;
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Set canvas size with padding
-    const padding = 40;
-    canvas.width = downloadSize + padding * 2;
-    canvas.height = downloadSize + padding * 2;
-
-    // Fill white background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Convert SVG to image
-    const svgData = new XMLSerializer().serializeToString(svg);
-    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(svgBlob);
-
-    const img = new Image();
-    img.onload = () => {
-      ctx.drawImage(img, padding, padding, downloadSize, downloadSize);
-      URL.revokeObjectURL(url);
-
-      const dataUrl = canvas.toDataURL('image/png');
-      
-      // Check if we're in Telegram's in-app browser or mobile
-      const isTelegram = navigator.userAgent.toLowerCase().includes('telegram') || 
-                         (window as any).Telegram?.WebApp;
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      
-      if (isTelegram || isMobile) {
-        // For Telegram/mobile: open image in new tab for long-press save
-        const newWindow = window.open('', '_blank');
-        if (newWindow) {
-          newWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta name="viewport" content="width=device-width, initial-scale=1">
-              <title>QR Code - ${userName}</title>
-              <style>
-                body { 
-                  margin: 0; 
-                  display: flex; 
-                  flex-direction: column;
-                  align-items: center; 
-                  justify-content: center; 
-                  min-height: 100vh; 
-                  background: #f1f5f9;
-                  font-family: system-ui, -apple-system, sans-serif;
-                  padding: 20px;
-                  box-sizing: border-box;
-                }
-                img { 
-                  max-width: 100%; 
-                  border-radius: 16px;
-                  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-                }
-                p {
-                  margin-top: 24px;
-                  color: #64748b;
-                  font-size: 14px;
-                  text-align: center;
-                }
-              </style>
-            </head>
-            <body>
-              <img src="${dataUrl}" alt="QR Code" />
-              <p>📱 Rasmni saqlash uchun bosib turing<br/>Long press to save image</p>
-            </body>
-            </html>
-          `);
-          newWindow.document.close();
-        }
-      } else {
-        // Desktop: direct download
-        const link = document.createElement('a');
-        link.download = `${userName.replace(/\s+/g, '_')}_cashback_qr.png`;
-        link.href = dataUrl;
-        link.click();
-      }
-    };
-    img.src = url;
-  }, [userName]);
-
+export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ value, size = 220, screenshotHint = '📷 Skrinshot oling va saqlang' }) => {
   return (
     <div className="flex flex-col items-center bg-white p-4 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl shadow-slate-100 border border-slate-50 transition hover:shadow-indigo-100/50 w-full max-w-[320px] sm:max-w-none">
-      <div ref={qrRef} className="p-3 sm:p-6 bg-white rounded-xl sm:rounded-[2rem] border-2 sm:border-4 border-slate-100" style={{ backgroundColor: '#ffffff' }}>
+      <div className="p-3 sm:p-6 bg-white rounded-xl sm:rounded-[2rem] border-2 sm:border-4 border-slate-100" style={{ backgroundColor: '#ffffff' }}>
         <QRCodeSVG 
           value={value} 
           size={size}
@@ -121,15 +27,13 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ value, size = 220,
             Secure Identity Link
         </p>
       </div>
-      <button
-        onClick={handleDownload}
-        className="mt-3 sm:mt-4 flex items-center justify-center gap-2 w-full sm:w-auto px-6 py-3 sm:py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-sm sm:text-xs rounded-xl transition-colors shadow-lg shadow-indigo-200"
-      >
-        <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+      <div className="mt-3 sm:mt-4 flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+        <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
-        {downloadLabel}
-      </button>
+        <span className="text-amber-700 font-semibold text-xs sm:text-sm">{screenshotHint}</span>
+      </div>
     </div>
   );
 };
