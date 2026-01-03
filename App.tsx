@@ -396,12 +396,12 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
 
       {/* QR Modal */}
       {showQR && (
-        <div className="fixed inset-0 z-[100] bg-white flex items-center justify-center p-6">
-            <div className="w-full max-w-sm text-center space-y-6">
+        <div className="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto">
+            <div className="w-full max-w-sm text-center space-y-4 sm:space-y-6 py-4">
                 <div className="flex flex-col items-center">
-                    <p className="text-slate-400 text-xs font-black uppercase tracking-[0.2em] mb-4">{t('showToSeller')}</p>
-                    <QRCodeDisplay value={user.qrData} />
-                    <h4 className="mt-6 text-xl font-black text-slate-900">{user.name}</h4>
+                    <p className="text-slate-400 text-[10px] sm:text-xs font-black uppercase tracking-[0.15em] sm:tracking-[0.2em] mb-3 sm:mb-4">{t('showToSeller')}</p>
+                    <QRCodeDisplay value={user.qrData} userName={user.name} downloadLabel={t('downloadQR')} />
+                    <h4 className="mt-4 sm:mt-6 text-lg sm:text-xl font-black text-slate-900">{user.name}</h4>
                 </div>
                 <Button variant="secondary" className="w-full" onClick={() => setShowQR(false)}>
                     {t('close')}
@@ -425,6 +425,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showStats, setShowStats] = useState(false);
   
   // Smart loading: show limited items by default
   const [showAllTransactions, setShowAllTransactions] = useState(false);
@@ -468,6 +469,31 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
     return statsMap;
   }, [allTransactions]);
 
+  // Dashboard statistics
+  const dashboardStats = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const todayTxs = allTransactions.filter(tx => new Date(tx.timestamp) >= today);
+    const todayEarned = todayTxs
+      .filter(tx => tx.type === TransactionType.EARN)
+      .reduce((sum, tx) => sum + tx.cashbackAmount, 0);
+    const todayRedeemed = todayTxs
+      .filter(tx => tx.type === TransactionType.REDEEM)
+      .reduce((sum, tx) => sum + tx.cashbackAmount, 0);
+    
+    const totalBalance = regularUsers.reduce((sum, u) => sum + u.balance, 0);
+    const avgBalance = regularUsers.length > 0 ? totalBalance / regularUsers.length : 0;
+
+    return {
+      totalUsers: regularUsers.length,
+      totalTransactions: allTransactions.length,
+      todayTransactions: todayTxs.length,
+      todayVolume: todayEarned + todayRedeemed,
+      avgBalance
+    };
+  }, [allTransactions, regularUsers]);
+
   // Filtered users for quick select (memoized)
   const filteredQuickSelectUsers = useMemo(() => {
     if (!searchQuery) {
@@ -489,34 +515,35 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
   }, [lang, t]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [txs, usrs] = await Promise.all([
-          storageService.getTransactions(),
-          storageService.getUsers()
-        ]);
-        
-        const uniqueTxs = Array.from(
-          new Map(txs.map(t => [t.id, t])).values()
-        );
-        
+    // FAST: Load cached data immediately (instant)
+    const { users: cachedUsers, transactions: cachedTxs, isStale } = storageService.getAllDataFast();
+    
+    if (cachedUsers.length > 0 || cachedTxs.length > 0) {
+      const uniqueTxs = Array.from(new Map(cachedTxs.map(tx => [tx.id, tx])).values());
+      setAllUsers(cachedUsers);
+      setAllTransactions(uniqueTxs);
+      setIsLoadingData(false);
+      setInsights(t('systemReady'));
+    }
+
+    // If stale or no cache, fetch fresh data in background
+    if (isStale || cachedUsers.length === 0) {
+      storageService.getAllData().then(({ users, transactions }) => {
+        const uniqueTxs = Array.from(new Map(transactions.map(tx => [tx.id, tx])).values());
+        setAllUsers(users);
         setAllTransactions(uniqueTxs);
-        setAllUsers(usrs);
-        
-        if (uniqueTxs.length > 0) {
-          setInsights(t('systemReady'));
-        } else {
-          setInsights(t('systemReady'));
+        setInsights(t('systemReady'));
+      }).catch(err => {
+        console.error('Background refresh failed:', err);
+        if (cachedUsers.length === 0) {
+          setInsights(t('connectionErrorRetrying'));
         }
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        setInsights(t('connectionErrorRetrying'));
-      } finally {
+      }).finally(() => {
         setIsLoadingData(false);
-      }
-    };
-    fetchData();
+      });
+    }
   }, []);
+
   const launchScanner = (mode: TransactionType) => {
     setScanMode(mode);
     setShowScanner(true);
@@ -649,6 +676,90 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
         {/* Main Interface */}
         <div className="lg:col-span-8 space-y-6 order-2 lg:order-1">
             
+            {/* Stats Toggle Button */}
+            <button
+              onClick={() => setShowStats(!showStats)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-white hover:bg-slate-50 rounded-xl border border-slate-100 transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center">
+                  <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                </div>
+                <span className="text-sm font-bold text-slate-700">{t('viewStatistics')}</span>
+                {dashboardStats.todayTransactions > 0 && (
+                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-black rounded-full">
+                    {dashboardStats.todayTransactions} {t('today')}
+                  </span>
+                )}
+              </div>
+              <svg className={`w-5 h-5 text-slate-400 transition-transform ${showStats ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Dashboard Statistics (Collapsible) */}
+            {showStats && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-in slide-in-from-top-2 duration-200">
+              {/* Total Users */}
+              <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-100 relative overflow-hidden min-w-0">
+                <div className="absolute top-0 right-0 w-12 sm:w-16 h-12 sm:h-16 bg-gradient-to-br from-blue-50 to-transparent rounded-bl-[2rem]"></div>
+                <div className="relative">
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 bg-blue-50 rounded-lg sm:rounded-xl flex items-center justify-center mb-2">
+                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-lg sm:text-2xl font-black text-slate-800 truncate">{dashboardStats.totalUsers}</p>
+                  <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5 truncate">{t('totalUsers')}</p>
+                </div>
+              </div>
+
+              {/* Total Transactions */}
+              <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-100 relative overflow-hidden min-w-0">
+                <div className="absolute top-0 right-0 w-12 sm:w-16 h-12 sm:h-16 bg-gradient-to-br from-emerald-50 to-transparent rounded-bl-[2rem]"></div>
+                <div className="relative">
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 bg-emerald-50 rounded-lg sm:rounded-xl flex items-center justify-center mb-2">
+                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                  </div>
+                  <p className="text-lg sm:text-2xl font-black text-slate-800 truncate">{dashboardStats.totalTransactions}</p>
+                  <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5 truncate">{t('totalTransactions')}</p>
+                </div>
+              </div>
+
+              {/* Today's Transactions */}
+              <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-100 relative overflow-hidden min-w-0">
+                <div className="absolute top-0 right-0 w-12 sm:w-16 h-12 sm:h-16 bg-gradient-to-br from-amber-50 to-transparent rounded-bl-[2rem]"></div>
+                <div className="relative">
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 bg-amber-50 rounded-lg sm:rounded-xl flex items-center justify-center mb-2">
+                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-lg sm:text-2xl font-black text-slate-800 truncate">{dashboardStats.todayTransactions}</p>
+                  <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5 truncate">{t('todayTransactions')}</p>
+                </div>
+              </div>
+
+              {/* Today's Volume */}
+              <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-100 relative overflow-hidden min-w-0">
+                <div className="absolute top-0 right-0 w-12 sm:w-16 h-12 sm:h-16 bg-gradient-to-br from-violet-50 to-transparent rounded-bl-[2rem]"></div>
+                <div className="relative">
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 bg-violet-50 rounded-lg sm:rounded-xl flex items-center justify-center mb-2">
+                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                    </svg>
+                  </div>
+                  <p className="text-sm sm:text-xl font-black text-slate-800 truncate">{formatPrice(dashboardStats.todayVolume)}</p>
+                  <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5 truncate">{t('todayVolume')}</p>
+                </div>
+              </div>
+            </div>
+            )}
+
             {/* Action Choice Phase */}
             {!selectedUser && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -810,7 +921,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                   </button>
                 )
             }>
-                <div className="overflow-x-auto scrollbar-hide -mx-4 md:-mx-6 px-4 md:px-6">
+                <div className="max-h-80 overflow-y-auto overflow-x-auto -mx-4 md:-mx-6 px-4 md:px-6">
                     <table className="w-full text-left min-w-[480px]">
                         <thead className="text-[9px] text-slate-400 font-black uppercase tracking-widest border-b border-slate-50">
                             <tr>
@@ -858,6 +969,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                   </button>
                 )
             }>
+              <div className="max-h-96 overflow-y-auto">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {sortedUsersByBalance
                         .slice(0, showAllUsers ? undefined : INITIAL_USER_LIMIT)
@@ -889,6 +1001,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                             );
                         })}
                 </div>
+              </div>
             </Card>
         </div>
 

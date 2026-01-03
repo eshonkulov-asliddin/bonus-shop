@@ -84,7 +84,15 @@ const translations: Translations = {
     giveRewardHint: 'Xarid uchun mukofot bering. Tizim 1% bonus hisoblaydi.',
     useBalanceHint: "Mavjud ballarni hisobni to'lash uchun ishlating.",
     showAll: "Hammasini ko'rish",
-    showLess: "Kamroq ko'rish"
+    showLess: "Kamroq ko'rish",
+    downloadQR: 'QR yuklab olish',
+    totalUsers: 'Jami mijozlar',
+    totalTransactions: 'Jami tranzaksiyalar',
+    todayTransactions: 'Bugungi tranzaksiyalar',
+    todayVolume: 'Bugungi hajm',
+    avgPerUser: "O'rtacha (har bir mijoz)",
+    viewStatistics: 'Statistikani ko\'rish',
+    today: 'bugun'
   },
   en: {
     appName: 'Bonus',
@@ -163,7 +171,15 @@ const translations: Translations = {
     giveRewardHint: 'Reward a purchase. System calculates 1% bonus.',
     useBalanceHint: 'Redeem existing points to pay for a bill.',
     showAll: 'Show All',
-    showLess: 'Show Less'
+    showLess: 'Show Less',
+    downloadQR: 'Download QR',
+    totalUsers: 'Total Customers',
+    totalTransactions: 'Total Transactions',
+    todayTransactions: 'Today\'s Transactions',
+    todayVolume: 'Today\'s Volume',
+    avgPerUser: 'Avg per Customer',
+    viewStatistics: 'View Statistics',
+    today: 'today'
   },
   ru: {
     appName: 'Бонус',
@@ -240,7 +256,15 @@ const translations: Translations = {
     giveRewardHint: 'Начислите бонус за покупку. Система считает 1% бонуса.',
     useBalanceHint: 'Списать накопленные баллы для оплаты счета.',
     showAll: 'Показать все',
-    showLess: 'Показать меньше'
+    showLess: 'Показать меньше',
+    downloadQR: 'Скачать QR',
+    totalUsers: 'Всего клиентов',
+    totalTransactions: 'Всего транзакций',
+    todayTransactions: 'Транзакции за сегодня',
+    todayVolume: 'Объем за сегодня',
+    avgPerUser: 'Среднее на клиента',
+    viewStatistics: 'Статистика',
+    today: 'сегодня'
   }
 };
 

@@ -5,6 +5,7 @@ const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID'; // Replace with your Google Sheet 
 const USERS_SHEET = 'Users';
 const TRANSACTIONS_SHEET = 'Transactions';
 const SETTINGS_SHEET = 'Settings';
+const CACHE_TTL = 60; // 60 seconds cache (Apps Script limit: 6 hours max)
 
 // Enable CORS
 function doGet(e) {
@@ -14,10 +15,13 @@ function doGet(e) {
     let result;
     switch(action) {
       case 'getUsers':
-        result = getUsers();
+        result = getUsersCached();
         break;
       case 'getTransactions':
-        result = getTransactions();
+        result = getTransactionsCached();
+        break;
+      case 'getAllData':
+        result = getAllDataCached();
         break;
       case 'getLang':
         result = getLang();
@@ -108,6 +112,54 @@ function initializeSheets() {
     // default language
     settingsSheet.appendRow(['lang', 'uz']);
   }
+}
+
+// Cached versions using CacheService
+function getUsersCached() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('users_data');
+  if (cached) {
+    return JSON.parse(cached);
+  }
+  const users = getUsers();
+  cache.put('users_data', JSON.stringify(users), CACHE_TTL);
+  return users;
+}
+
+function getTransactionsCached() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('transactions_data');
+  if (cached) {
+    return JSON.parse(cached);
+  }
+  const transactions = getTransactions();
+  cache.put('transactions_data', JSON.stringify(transactions), CACHE_TTL);
+  return transactions;
+}
+
+// Combined endpoint - fetches both in one request (faster!)
+function getAllDataCached() {
+  const cache = CacheService.getScriptCache();
+  const cachedAll = cache.get('all_data');
+  if (cachedAll) {
+    return JSON.parse(cachedAll);
+  }
+  
+  const users = getUsers();
+  const transactions = getTransactions();
+  const result = { users, transactions };
+  
+  cache.put('all_data', JSON.stringify(result), CACHE_TTL);
+  cache.put('users_data', JSON.stringify(users), CACHE_TTL);
+  cache.put('transactions_data', JSON.stringify(transactions), CACHE_TTL);
+  
+  return result;
+}
+
+// Invalidate cache when data changes
+function invalidateCache() {
+  const cache = CacheService.getScriptCache();
+  cache.removeAll(['users_data', 'transactions_data', 'all_data']);
 }
 
 // Get all users
@@ -255,6 +307,9 @@ function saveUser(user) {
   // Flush changes immediately
   SpreadsheetApp.flush();
   
+  // Invalidate cache
+  invalidateCache();
+  
   return { success: true, user: user };
 }
 
@@ -299,6 +354,9 @@ function saveTransaction(transaction) {
       break;
     }
   }
+  
+  // Invalidate cache
+  invalidateCache();
   
   return { success: true, transaction: transaction };
 }
