@@ -1185,29 +1185,41 @@ export default function App() {
     if (!user || user.role === UserRole.ADMIN) return;
 
     let intervalId: NodeJS.Timeout;
+    let isRefreshing = false;
     
-    const refreshData = () => {
-      storageService.findUserById(user.id).then(freshUser => {
+    const refreshData = async () => {
+      if (isRefreshing) return;
+      isRefreshing = true;
+      
+      try {
+        // Fetch fresh user and transactions in parallel
+        const [freshUser, txs] = await Promise.all([
+          storageService.findUserById(user.id),
+          storageService.getTransactions(true)
+        ]);
+        
         if (freshUser && freshUser.balance !== user.balance) {
           setUser(freshUser);
           localStorage.setItem('loyalty_session', JSON.stringify(freshUser));
         }
-      }).catch(err => console.error('Error auto-refreshing:', err));
-      
-      storageService.getTransactions(true).then(txs => {
+        
         setTransactions(txs);
-      }).catch(err => console.error('Error refreshing transactions:', err));
+      } catch (err) {
+        console.error('Error refreshing:', err);
+      } finally {
+        isRefreshing = false;
+      }
     };
-
-    const debouncedRefresh = debounce(refreshData, 300);
     
     const handleVisibilityChange = () => {
       if (document.hidden) {
         if (intervalId) clearInterval(intervalId);
       } else {
-        debouncedRefresh();
+        // Refresh immediately when app becomes visible
+        refreshData();
         
-        intervalId = setInterval(refreshData, 60000);
+        // Then refresh every 15 seconds for faster updates
+        intervalId = setInterval(refreshData, 15000);
       }
     };
     

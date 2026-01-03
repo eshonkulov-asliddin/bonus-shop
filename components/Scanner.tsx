@@ -1,128 +1,113 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Html5QrcodeScanner, Html5QrcodeScanType } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 
 interface ScannerProps {
   onScan: (decodedText: string) => void;
   onClose: () => void;
 }
 
-// Track if camera permission was already granted this session
-let cameraPermissionGranted = false;
-
 export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose }) => {
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
   const onScanRef = useRef(onScan);
   const hasScannedRef = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [scannerId] = useState(() => `qr-reader-${Date.now()}`);
   const [error, setError] = useState<string>('');
+  const [isStarting, setIsStarting] = useState(true);
+  const [showManualStart, setShowManualStart] = useState(false);
 
-  // Keep onScan callback updated
   useEffect(() => {
     onScanRef.current = onScan;
   }, [onScan]);
 
+  const startScanner = async () => {
+    if (scannerRef.current) return;
+    
+    setIsStarting(true);
+    setError('');
+    setShowManualStart(false);
+    
+    try {
+      const scanner = new Html5Qrcode(scannerId);
+      scannerRef.current = scanner;
+
+      // Get available cameras
+      const devices = await Html5Qrcode.getCameras();
+      
+      if (!devices || devices.length === 0) {
+        setError('Kamera topilmadi / No camera found');
+        setIsStarting(false);
+        return;
+      }
+
+      // Prefer back camera
+      let cameraId = devices[0].id;
+      const backCamera = devices.find(d => 
+        d.label.toLowerCase().includes('back') || 
+        d.label.toLowerCase().includes('rear') ||
+        d.label.toLowerCase().includes('environment')
+      );
+      if (backCamera) {
+        cameraId = backCamera.id;
+      }
+
+      await scanner.start(
+        cameraId,
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0
+        },
+        (decodedText) => {
+          if (hasScannedRef.current) return;
+          
+          const trimmedData = decodedText?.trim();
+          if (!trimmedData) return;
+          
+          hasScannedRef.current = true;
+          
+          // Stop scanner
+          scanner.stop().catch(() => {});
+          scannerRef.current = null;
+          
+          onScanRef.current(trimmedData);
+        },
+        () => {
+          // Silently ignore scan errors
+        }
+      );
+      
+      setIsStarting(false);
+    } catch (err: any) {
+      console.error('Scanner error:', err);
+      setIsStarting(false);
+      
+      // Check if it's a permission error
+      if (err?.message?.includes('Permission') || err?.name === 'NotAllowedError') {
+        setError('Kameraga ruxsat bering / Allow camera access');
+        setShowManualStart(true);
+      } else if (err?.message?.includes('NotFoundError') || err?.message?.includes('no camera')) {
+        setError('Kamera topilmadi / No camera found');
+      } else {
+        setError('Kamerani ishga tushirib bo\'lmadi / Camera failed');
+        setShowManualStart(true);
+      }
+    }
+  };
+
   useEffect(() => {
     hasScannedRef.current = false;
-    setError('');
     
     // Small delay to ensure DOM is ready
-    const timer = setTimeout(async () => {
-      try {
-        // Only check permission if not already granted this session
-        if (!cameraPermissionGranted) {
-          try {
-            // Check permission status without prompting if possible
-            if (navigator.permissions && navigator.permissions.query) {
-              const result = await navigator.permissions.query({ name: 'camera' as PermissionName });
-              if (result.state === 'denied') {
-                setError('Camera access denied. Please allow camera permissions in your browser settings.');
-                return;
-              }
-              if (result.state === 'granted') {
-                cameraPermissionGranted = true;
-              }
-            }
-            
-            // If not already granted, do a quick permission request
-            if (!cameraPermissionGranted) {
-              const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: 'environment' } 
-              });
-              stream.getTracks().forEach(track => track.stop());
-              cameraPermissionGranted = true;
-            }
-          } catch (permError) {
-            console.error('Camera permission error:', permError);
-            setError('Camera access denied. Please allow camera permissions in your browser settings.');
-            return;
-          }
-        }
-
-        const scanner = new Html5QrcodeScanner(
-          scannerId,
-          { 
-            fps: 10,
-            qrbox: 250,
-            aspectRatio: 1.0,
-            disableFlip: false,
-            rememberLastUsedCamera: true,
-            supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
-            videoConstraints: {
-              facingMode: "environment"
-            },
-            experimentalFeatures: {
-              useBarCodeDetectorIfSupported: true
-            }
-          },
-          false
-        );
-
-        scanner.render(
-          (decodedText) => {
-            // Prevent multiple scans
-            if (hasScannedRef.current) return;
-            
-            // Ignore empty scans silently
-            const trimmedData = decodedText?.trim();
-            if (!trimmedData) return;
-            
-            hasScannedRef.current = true;
-            
-            // Pause scanner immediately to freeze frame
-            try {
-              scanner.pause(true);
-            } catch (e) {
-              // ignore if pause fails
-            }
-            
-            // Clean up scanner
-            scanner.clear().catch(() => {});
-            scannerRef.current = null;
-            
-            // Call parent callback
-            onScanRef.current(trimmedData);
-          },
-          (errorMessage) => {
-            // Silently ignore scan failures
-          }
-        );
-
-        scannerRef.current = scanner;
-      } catch (err) {
-        console.error('Scanner init error:', err);
-        setError('Failed to initialize camera. Please check permissions.');
-      }
-    }, 100);
+    const timer = setTimeout(() => {
+      startScanner();
+    }, 300);
 
     return () => {
       clearTimeout(timer);
       if (scannerRef.current) {
-        try {
-          scannerRef.current.clear().catch(() => {});
-        } catch (e) {
-          // ignore
-        }
+        scannerRef.current.stop().catch(() => {});
         scannerRef.current = null;
       }
     };
@@ -132,7 +117,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose }) => {
     <div className="fixed inset-0 z-50 bg-black bg-opacity-90 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-sm bg-white rounded-2xl overflow-hidden shadow-2xl">
         <div className="p-3 border-b flex justify-between items-center bg-indigo-600 text-white">
-          <h3 className="font-bold text-sm">Scan Customer QR</h3>
+          <h3 className="font-bold text-sm">QR Skanerlash</h3>
           <button 
             onClick={onClose}
             className="p-1.5 hover:bg-indigo-500 rounded-full transition"
@@ -142,41 +127,60 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose }) => {
           </button>
         </div>
         
-        <div id={scannerId} className="w-full" style={{ maxHeight: '300px', overflow: 'hidden' }}></div>
+        <div className="relative bg-black" style={{ minHeight: '280px' }}>
+          <div id={scannerId} ref={containerRef} className="w-full"></div>
+          
+          {isStarting && !error && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
+              <div className="text-center">
+                <div className="w-10 h-10 border-3 border-white border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                <p className="text-white text-sm font-medium">Kamera yuklanmoqda...</p>
+                <p className="text-slate-400 text-xs mt-1">Loading camera...</p>
+              </div>
+            </div>
+          )}
+          
+          {showManualStart && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
+              <div className="text-center px-4">
+                <button
+                  onClick={startScanner}
+                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-colors mb-3"
+                >
+                  📷 Kamerani yoqish
+                </button>
+                <p className="text-slate-400 text-xs">Tap to start camera</p>
+              </div>
+            </div>
+          )}
+        </div>
         
-        {error && (
+        {error && !showManualStart && (
           <div className="px-4 py-3 bg-red-50 border-t border-red-100">
             <p className="text-red-600 text-xs font-semibold text-center">{error}</p>
+            <button 
+              onClick={startScanner}
+              className="mt-2 w-full py-2 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-bold rounded-lg transition"
+            >
+              Qayta urinish / Try again
+            </button>
           </div>
         )}
         
-        <div className="p-3 bg-slate-50 text-center text-xs text-slate-500">
-          Position the QR code within the frame
+        <div className="p-3 bg-slate-50 border-t">
+          <p className="text-slate-500 text-[11px] text-center">QR kodni kamera old tomoniga joylashtiring</p>
         </div>
       </div>
       
       <style>{`
         #${scannerId} {
+          width: 100% !important;
           border: none !important;
         }
         #${scannerId} video {
           width: 100% !important;
-          height: 250px !important;
+          height: 280px !important;
           object-fit: cover !important;
-          border-radius: 0 !important;
-        }
-        #${scannerId}__scan_region {
-          width: 100% !important;
-          min-height: 250px !important;
-        }
-        #${scannerId} img {
-          display: none;
-        }
-        #${scannerId}__dashboard_section_swaplink {
-          display: none !important;
-        }
-        #${scannerId}__header_message {
-          display: none !important;
         }
       `}</style>
     </div>
