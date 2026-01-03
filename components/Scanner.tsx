@@ -7,6 +7,9 @@ interface ScannerProps {
   onClose: () => void;
 }
 
+// Track if camera permission was already granted this session
+let cameraPermissionGranted = false;
+
 export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose }) => {
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
   const onScanRef = useRef(onScan);
@@ -26,17 +29,34 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose }) => {
     // Small delay to ensure DOM is ready
     const timer = setTimeout(async () => {
       try {
-        // Request camera permissions explicitly first
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: 'environment' } 
-          });
-          // Stop the test stream
-          stream.getTracks().forEach(track => track.stop());
-        } catch (permError) {
-          console.error('Camera permission error:', permError);
-          setError('Camera access denied. Please allow camera permissions in your browser settings.');
-          return;
+        // Only check permission if not already granted this session
+        if (!cameraPermissionGranted) {
+          try {
+            // Check permission status without prompting if possible
+            if (navigator.permissions && navigator.permissions.query) {
+              const result = await navigator.permissions.query({ name: 'camera' as PermissionName });
+              if (result.state === 'denied') {
+                setError('Camera access denied. Please allow camera permissions in your browser settings.');
+                return;
+              }
+              if (result.state === 'granted') {
+                cameraPermissionGranted = true;
+              }
+            }
+            
+            // If not already granted, do a quick permission request
+            if (!cameraPermissionGranted) {
+              const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: 'environment' } 
+              });
+              stream.getTracks().forEach(track => track.stop());
+              cameraPermissionGranted = true;
+            }
+          } catch (permError) {
+            console.error('Camera permission error:', permError);
+            setError('Camera access denied. Please allow camera permissions in your browser settings.');
+            return;
+          }
         }
 
         const scanner = new Html5QrcodeScanner(
@@ -49,9 +69,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onScan, onClose }) => {
             rememberLastUsedCamera: true,
             supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
             videoConstraints: {
-              facingMode: "environment",
-              focusMode: "continuous",
-              advanced: [{ zoom: 2.0 }]
+              facingMode: "environment"
             },
             experimentalFeatures: {
               useBarCodeDetectorIfSupported: true

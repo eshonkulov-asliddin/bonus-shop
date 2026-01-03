@@ -126,32 +126,32 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
       const telegramId = String(tgUser.id);
       const qrDataValue = 'tg_' + telegramId;
       
-      const user: User = {
-        id: telegramId,
-        phoneNumber: '',
-        name: tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : ''),
-        role: UserRole.USER,
-        balance: 0,
-        qrData: qrDataValue,
-        createdAt: new Date().toISOString(),
-      };
+      // Check if user already exists in backend
+      const existingUsers = await storageService.getUsers(true);
+      let existingUser = existingUsers.find(u => String(u.id) === telegramId);
       
-      onLogin(user);
-      
-      storageService.getUsers(true).then(existingUsers => {
-        let existingUser = existingUsers.find(u => String(u.id) === telegramId);
-        
-        if (existingUser) {
-          localStorage.setItem('loyalty_session', JSON.stringify(existingUser));
-          
-          if (!existingUser.qrData || existingUser.qrData === '' || existingUser.qrData === telegramId || String(existingUser.qrData) === telegramId) {
-            existingUser.qrData = qrDataValue;
-            storageService.saveUser(existingUser).catch(err => console.error('Background qrData update error:', err));
-          }
-        } else {
-          storageService.saveUser(user).catch(err => console.error('Background user save error:', err));
+      if (existingUser) {
+        // User exists - use their stored data (with updated balance)
+        if (!existingUser.qrData || existingUser.qrData === '' || existingUser.qrData === telegramId) {
+          existingUser.qrData = qrDataValue;
+          storageService.saveUser(existingUser).catch(err => console.error('Background qrData update error:', err));
         }
-      }).catch(err => console.error('Background Telegram sync error:', err));
+        onLogin(existingUser);
+      } else {
+        // New user - create profile
+        const user: User = {
+          id: telegramId,
+          phoneNumber: '',
+          name: tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : ''),
+          role: UserRole.USER,
+          balance: 0,
+          qrData: qrDataValue,
+          createdAt: new Date().toISOString(),
+        };
+        
+        onLogin(user);
+        storageService.saveUser(user).catch(err => console.error('Background user save error:', err));
+      }
       
     } catch (error) {
       console.error('Telegram auth error:', error);
@@ -253,6 +253,7 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
 const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogout: () => void }> = ({ user, transactions, onLogout }) => {
   const { t } = useI18n();
   const [showQR, setShowQR] = useState(false);
+  const [showAllTx, setShowAllTx] = useState(false);
   
   useEffect(() => {
     if (showQR && 'wakeLock' in navigator) {
@@ -284,11 +285,19 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
             {t(stats.tier === 'Gold' ? 'tierGold' : stats.tier === 'Silver' ? 'tierSilver' : 'tierBronze')} {t('status')}
           </span>
         </div>
-        <button onClick={onLogout} className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-2xl border border-slate-100 flex items-center justify-center text-slate-400 hover:text-rose-500 transition shadow-sm">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-2">
+          <LanguageSelect />
+          <button onClick={() => window.location.reload()} className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-2xl border border-slate-100 flex items-center justify-center text-slate-400 hover:text-indigo-500 transition shadow-sm" title={t('refresh')}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+          <button onClick={onLogout} className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-2xl border border-slate-100 flex items-center justify-center text-slate-400 hover:text-rose-500 transition shadow-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div className="relative overflow-hidden bg-indigo-600 rounded-[2rem] md:rounded-[2.5rem] p-6 md:p-8 text-white shadow-2xl shadow-indigo-200">
@@ -340,7 +349,7 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
           <div className="space-y-2">
             {userTransactions
               .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-              .slice(0, 10)
+              .slice(0, showAllTx ? undefined : 5)
               .map(tx => (
               <div key={tx.id} className="bg-white p-4 rounded-2xl border border-slate-50 flex justify-between items-center">
                 <div className="flex items-center gap-4">
@@ -357,6 +366,22 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
                 <span className="font-bold text-slate-800">{formatPrice(tx.cashbackAmount)}</span>
               </div>
             ))}
+            {!showAllTx && userTransactions.length > 5 && (
+              <button
+                onClick={() => setShowAllTx(true)}
+                className="w-full py-3 text-center text-sm font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-2xl transition-colors"
+              >
+                {t('viewAll')} ({userTransactions.length})
+              </button>
+            )}
+            {showAllTx && userTransactions.length > 5 && (
+              <button
+                onClick={() => setShowAllTx(false)}
+                className="w-full py-3 text-center text-sm font-bold text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-2xl transition-colors"
+              >
+                {t('showLess')}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -391,6 +416,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   
   // Smart loading: show limited items by default
   const [showAllTransactions, setShowAllTransactions] = useState(false);
@@ -435,6 +461,12 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
   const launchScanner = (mode: TransactionType) => {
     setScanMode(mode);
     setShowScanner(true);
+  };
+
+  const selectUserManually = (user: User, mode: TransactionType) => {
+    setScanMode(mode);
+    setSelectedUser(user);
+    setSearchQuery('');
   };
 
   const handleScan = async (qrData: string) => {
@@ -541,8 +573,13 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
             <h2 className="text-xl font-black text-slate-900 leading-tight">{t('merchantAccess')}</h2>
           </div>
         </div>
-        <div className="flex items-center gap-3 sm:gap-2">
+        <div className="flex items-center gap-2 sm:gap-2">
           <LanguageSelect />
+          <button onClick={() => window.location.reload()} className="w-10 h-10 bg-slate-50 hover:bg-indigo-50 rounded-xl text-slate-500 hover:text-indigo-600 transition-colors flex items-center justify-center" title={t('refresh')}>
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
           <button onClick={onLogout} className="w-full sm:w-auto px-5 py-2.5 bg-slate-50 hover:bg-rose-50 rounded-xl text-slate-500 hover:text-rose-600 font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-2">
             {t('lockSession')}
           </button>
@@ -580,6 +617,59 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                         <div className="mt-6 px-4 py-2 bg-black/10 rounded-full text-[10px] font-black uppercase tracking-widest">{t('tapToScan')}</div>
                     </button>
                 </div>
+            )}
+
+            {/* Quick Select - Manual User Lookup (No Camera Needed) */}
+            {!selectedUser && allUsers.filter(u => u.role !== UserRole.ADMIN).length > 0 && (
+              <Card className="border-slate-100">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider">{t('quickSelect')}</h3>
+                    <span className="text-[10px] text-slate-400 font-medium">{t('orSelectUser')}</span>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder={t('searchUser')}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-200 outline-none"
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                    {allUsers
+                      .filter(u => u.role !== UserRole.ADMIN)
+                      .filter(u => {
+                        if (!searchQuery) return true;
+                        const q = searchQuery.toLowerCase();
+                        return u.name.toLowerCase().includes(q) || u.phoneNumber.includes(q);
+                      })
+                      .slice(0, searchQuery ? 6 : 4)
+                      .map(user => (
+                        <div key={user.id} className="flex items-center justify-between bg-slate-50 rounded-xl p-3 gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-slate-800 text-sm truncate">{user.name}</p>
+                            <p className="text-[10px] text-slate-400 font-medium">{formatPrice(user.balance)}</p>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <button
+                              onClick={() => selectUserManually(user, TransactionType.EARN)}
+                              className="w-8 h-8 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg flex items-center justify-center transition-colors"
+                              title={t('giveReward')}
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 6v12m6-6H6" /></svg>
+                            </button>
+                            <button
+                              onClick={() => selectUserManually(user, TransactionType.REDEEM)}
+                              className="w-8 h-8 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg flex items-center justify-center transition-colors"
+                              title={t('useBalance')}
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M18 12H6" /></svg>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </Card>
             )}
 
             {/* Price Entry Phase (Post-Scan) */}
