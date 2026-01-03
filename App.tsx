@@ -260,7 +260,16 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
       (navigator as any).wakeLock.request('screen').catch(() => {});
     }
   }, [showQR]);
-  const userTransactions = transactions.filter(t => t.userId === user.id);
+  
+  const userTransactions = useMemo(() => 
+    transactions.filter(t => t.userId === user.id),
+    [transactions, user.id]
+  );
+  
+  const sortedUserTransactions = useMemo(() => 
+    [...userTransactions].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+    [userTransactions]
+  );
   
   const stats = useMemo(() => {
     const totalEarned = userTransactions
@@ -347,8 +356,7 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
           </div>
         ) : (
           <div className="space-y-2">
-            {userTransactions
-              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+            {sortedUserTransactions
               .slice(0, showAllTx ? undefined : 5)
               .map(tx => (
               <div key={tx.id} className="bg-white p-4 rounded-2xl border border-slate-50 flex justify-between items-center">
@@ -423,6 +431,57 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
   const [showAllUsers, setShowAllUsers] = useState(false);
   const INITIAL_TX_LIMIT = 5;
   const INITIAL_USER_LIMIT = 6;
+
+  // Memoized computed data for performance
+  const regularUsers = useMemo(() => 
+    allUsers.filter(u => u.role !== UserRole.ADMIN),
+    [allUsers]
+  );
+
+  const userMap = useMemo(() => 
+    new Map(allUsers.map(u => [u.id, u])),
+    [allUsers]
+  );
+
+  const sortedTransactions = useMemo(() => 
+    [...allTransactions].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+    [allTransactions]
+  );
+
+  const sortedUsersByBalance = useMemo(() => 
+    [...regularUsers].sort((a, b) => b.balance - a.balance),
+    [regularUsers]
+  );
+
+  // Pre-computed user stats for fast lookup
+  const userStatsMap = useMemo(() => {
+    const statsMap = new Map<string, { earned: number; used: number }>();
+    for (const tx of allTransactions) {
+      const existing = statsMap.get(tx.userId) || { earned: 0, used: 0 };
+      if (tx.type === TransactionType.EARN) {
+        existing.earned += tx.cashbackAmount;
+      } else {
+        existing.used += tx.cashbackAmount;
+      }
+      statsMap.set(tx.userId, existing);
+    }
+    return statsMap;
+  }, [allTransactions]);
+
+  // Filtered users for quick select (memoized)
+  const filteredQuickSelectUsers = useMemo(() => {
+    if (!searchQuery) {
+      return regularUsers.slice(0, 4);
+    }
+    const q = searchQuery.toLowerCase();
+    return regularUsers
+      .filter(u => {
+        const name = (u.name || '').toLowerCase();
+        const phone = String(u.phoneNumber || '');
+        return name.includes(q) || phone.includes(q);
+      })
+      .slice(0, 6);
+  }, [regularUsers, searchQuery]);
 
   // Update insights text when language changes
   useEffect(() => {
@@ -620,7 +679,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
             )}
 
             {/* Quick Select - Manual User Lookup (No Camera Needed) */}
-            {!selectedUser && allUsers.filter(u => u.role !== UserRole.ADMIN).length > 0 && (
+            {!selectedUser && regularUsers.length > 0 && (
               <Card className="border-slate-100">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -635,15 +694,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                     className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-200 outline-none"
                   />
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto">
-                    {allUsers
-                      .filter(u => u.role !== UserRole.ADMIN)
-                      .filter(u => {
-                        if (!searchQuery) return true;
-                        const q = searchQuery.toLowerCase();
-                        return u.name.toLowerCase().includes(q) || u.phoneNumber.includes(q);
-                      })
-                      .slice(0, searchQuery ? 6 : 4)
-                      .map(user => (
+                    {filteredQuickSelectUsers.map(user => (
                         <div key={user.id} className="flex items-center justify-between bg-slate-50 rounded-xl p-3 gap-2">
                           <div className="min-w-0 flex-1">
                             <p className="font-bold text-slate-800 text-sm truncate">{user.name}</p>
@@ -749,7 +800,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
               </div>
             )}
 
-            <Card title={t('latestTransactions')} className="px-0 md:px-6" headerAction={
+            <Card title={t('latestTransactions')} headerAction={
                 allTransactions.length > INITIAL_TX_LIMIT && (
                   <button 
                     onClick={() => setShowAllTransactions(!showAllTransactions)}
@@ -759,7 +810,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                   </button>
                 )
             }>
-                <div className="overflow-x-auto scrollbar-hide">
+                <div className="overflow-x-auto scrollbar-hide -mx-4 md:-mx-6 px-4 md:px-6">
                     <table className="w-full text-left min-w-[480px]">
                         <thead className="text-[9px] text-slate-400 font-black uppercase tracking-widest border-b border-slate-50">
                             <tr>
@@ -770,11 +821,10 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                             </tr>
                         </thead>
                         <tbody className="text-[11px] md:text-xs">
-                            {allTransactions
-                              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                            {sortedTransactions
                               .slice(0, showAllTransactions ? undefined : INITIAL_TX_LIMIT)
                               .map(tx => {
-                                const customer = allUsers.find(u => u.id === tx.userId);
+                                const customer = userMap.get(tx.userId);
                                 return (
                                     <tr key={tx.id} className="border-b last:border-0 border-slate-50 hover:bg-slate-50 transition-colors">
                                         <td className="p-4 md:p-6">
@@ -798,25 +848,21 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                 </div>
             </Card>
 
-            <Card title={t('userCashbackOverview')} className="px-0 md:px-6" headerAction={
-                allUsers.filter(u => u.role !== UserRole.ADMIN).length > INITIAL_USER_LIMIT && (
+            <Card title={t('userCashbackOverview')} headerAction={
+                regularUsers.length > INITIAL_USER_LIMIT && (
                   <button 
                     onClick={() => setShowAllUsers(!showAllUsers)}
                     className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 uppercase tracking-wider transition-colors"
                   >
-                    {showAllUsers ? t('showLess') : `${t('showAll')} (${allUsers.filter(u => u.role !== UserRole.ADMIN).length})`}
+                    {showAllUsers ? t('showLess') : `${t('showAll')} (${regularUsers.length})`}
                   </button>
                 )
             }>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 px-4 md:px-0">
-                    {allUsers
-                        .filter(u => u.role !== UserRole.ADMIN)
-                        .sort((a, b) => b.balance - a.balance)
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {sortedUsersByBalance
                         .slice(0, showAllUsers ? undefined : INITIAL_USER_LIMIT)
                         .map(u => {
-                            const userTxs = allTransactions.filter(tx => tx.userId === u.id);
-                            const earned = userTxs.filter(tx => tx.type === TransactionType.EARN).reduce((sum, tx) => sum + tx.cashbackAmount, 0);
-                            const used = userTxs.filter(tx => tx.type === TransactionType.REDEEM).reduce((sum, tx) => sum + tx.cashbackAmount, 0);
+                            const stats = userStatsMap.get(u.id) || { earned: 0, used: 0 };
                             
                             return (
                                 <div key={u.id} className="p-4 bg-slate-50 rounded-2xl hover:bg-slate-100 transition-colors border border-slate-100">
@@ -832,11 +878,11 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                                     <div className="flex gap-4 text-[10px]">
                                         <div>
                                             <span className="text-slate-400 font-bold">{t('earned')}: </span>
-                                            <span className="text-emerald-600 font-black">{formatPrice(earned)}</span>
+                                            <span className="text-emerald-600 font-black">{formatPrice(stats.earned)}</span>
                                         </div>
                                         <div>
                                             <span className="text-slate-400 font-bold">{t('used')}: </span>
-                                            <span className="text-rose-600 font-black">{formatPrice(used)}</span>
+                                            <span className="text-rose-600 font-black">{formatPrice(stats.used)}</span>
                                         </div>
                                     </div>
                                 </div>

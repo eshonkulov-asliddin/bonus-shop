@@ -17,6 +17,7 @@ const MAX_RETRIES = 2;
 
 let usersCache: CacheEntry<User[]> | null = null;
 let transactionsCache: CacheEntry<Transaction[]> | null = null;
+let userByIdMap: Map<string, User> | null = null; // O(1) lookup cache
 
 // Fetch with timeout and retry logic
 const fetchWithTimeout = async (url: string, options?: RequestInit, timeout = REQUEST_TIMEOUT): Promise<Response> => {
