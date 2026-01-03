@@ -286,15 +286,15 @@ const UserDashboard: React.FC<{ user: User, transactions: Transaction[], onLogou
 
   return (
     <div className="w-full max-w-md mx-auto p-4 md:p-6 space-y-6 md:space-y-8 pb-24">
-      <div className="flex justify-between items-start">
-        <div className="space-y-1">
+      <div className="flex justify-between items-start gap-3">
+        <div className="space-y-1 min-w-0 flex-1">
           <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">{t('myAccount')}</p>
-          <h2 className="text-xl md:text-2xl font-black text-slate-900">{user.name}</h2>
+          <h2 className="text-xl md:text-2xl font-black text-slate-900 truncate">{user.name}</h2>
           <span className={`inline-flex px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${stats.tierColor}`}>
             {t(stats.tier === 'Gold' ? 'tierGold' : stats.tier === 'Silver' ? 'tierSilver' : 'tierBronze')} {t('status')}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <LanguageSelect />
           <button onClick={() => window.location.reload()} className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-2xl border border-slate-100 flex items-center justify-center text-slate-400 hover:text-indigo-500 transition shadow-sm" title={t('refresh')}>
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -431,7 +431,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
   const [showAllTransactions, setShowAllTransactions] = useState(false);
   const [showAllUsers, setShowAllUsers] = useState(false);
   const INITIAL_TX_LIMIT = 5;
-  const INITIAL_USER_LIMIT = 6;
+  const INITIAL_USER_LIMIT = 3;
 
   // Memoized computed data for performance
   const regularUsers = useMemo(() => 
@@ -977,13 +977,13 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                             const stats = userStatsMap.get(u.id) || { earned: 0, used: 0 };
                             
                             return (
-                                <div key={u.id} className="p-4 bg-slate-50 rounded-2xl hover:bg-slate-100 transition-colors border border-slate-100">
-                                    <div className="flex justify-between items-start mb-3">
-                                        <div>
-                                            <p className="font-bold text-slate-800 text-sm">{u.name}</p>
-                                            <p className="text-[9px] text-slate-400 uppercase font-black">{u.phoneNumber || t('noPhone')}</p>
+                                <div key={u.id} className="p-4 bg-slate-50 rounded-2xl hover:bg-slate-100 transition-colors border border-slate-100 min-w-0">
+                                    <div className="flex justify-between items-start mb-3 gap-2">
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-bold text-slate-800 text-sm truncate">{u.name}</p>
+                                            <p className="text-[9px] text-slate-400 uppercase font-black truncate">{u.phoneNumber || t('noPhone')}</p>
                                         </div>
-                                        <div className={`px-3 py-1.5 rounded-lg text-xs font-black ${u.balance > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
+                                        <div className={`px-3 py-1.5 rounded-lg text-xs font-black flex-shrink-0 ${u.balance > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
                                             {formatPrice(u.balance)}
                                         </div>
                                     </div>
