@@ -41,11 +41,64 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ value, size = 220,
       ctx.drawImage(img, padding, padding, downloadSize, downloadSize);
       URL.revokeObjectURL(url);
 
-      // Download as PNG
-      const link = document.createElement('a');
-      link.download = `${userName.replace(/\s+/g, '_')}_cashback_qr.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
+      const dataUrl = canvas.toDataURL('image/png');
+      
+      // Check if we're in Telegram's in-app browser or mobile
+      const isTelegram = navigator.userAgent.toLowerCase().includes('telegram') || 
+                         (window as any).Telegram?.WebApp;
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      
+      if (isTelegram || isMobile) {
+        // For Telegram/mobile: open image in new tab for long-press save
+        const newWindow = window.open('', '_blank');
+        if (newWindow) {
+          newWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>QR Code - ${userName}</title>
+              <style>
+                body { 
+                  margin: 0; 
+                  display: flex; 
+                  flex-direction: column;
+                  align-items: center; 
+                  justify-content: center; 
+                  min-height: 100vh; 
+                  background: #f1f5f9;
+                  font-family: system-ui, -apple-system, sans-serif;
+                  padding: 20px;
+                  box-sizing: border-box;
+                }
+                img { 
+                  max-width: 100%; 
+                  border-radius: 16px;
+                  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+                }
+                p {
+                  margin-top: 24px;
+                  color: #64748b;
+                  font-size: 14px;
+                  text-align: center;
+                }
+              </style>
+            </head>
+            <body>
+              <img src="${dataUrl}" alt="QR Code" />
+              <p>📱 Rasmni saqlash uchun bosib turing<br/>Long press to save image</p>
+            </body>
+            </html>
+          `);
+          newWindow.document.close();
+        }
+      } else {
+        // Desktop: direct download
+        const link = document.createElement('a');
+        link.download = `${userName.replace(/\s+/g, '_')}_cashback_qr.png`;
+        link.href = dataUrl;
+        link.click();
+      }
     };
     img.src = url;
   }, [userName]);
