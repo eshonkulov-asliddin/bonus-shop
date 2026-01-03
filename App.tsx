@@ -4,7 +4,7 @@ import { storageService } from './services/storage';
 import { QRCodeDisplay } from './components/QRCodeDisplay';
 import { Scanner } from './components/Scanner';
 import { TelegramSignIn } from './components/TelegramSignIn';
-import { formatPrice, generateId, debounce } from './utils';
+import { formatPrice, generateId, generateSecureQrToken, debounce } from './utils';
 import { useI18n } from './services/i18n';
 import { LanguageSelect } from './components/LanguageSelect';
 
@@ -64,48 +64,63 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
       }
 
       if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-        const adminUser: User = {
-          id: 'admin_' + Date.now(),
-          phoneNumber: '',
-          name: 'Administrator',
-          role: UserRole.ADMIN,
-          balance: 0,
-          qrData: 'admin_' + Date.now(),
-          createdAt: new Date().toISOString()
-        };
+        // First check if admin exists in backend
+        const backendAdmin = await storageService.findUserByIdDirect('admin_1');
         
-        onLogin(adminUser);
-        
-        storageService.getUsers().then(existingUsers => {
-          const backendAdmin = existingUsers.find(u => u.role === UserRole.ADMIN);
-          if (backendAdmin) {
-            localStorage.setItem('loyalty_session', JSON.stringify(backendAdmin));
-          } else {
-            storageService.saveUser(adminUser);
+        if (backendAdmin && backendAdmin.role === UserRole.ADMIN) {
+          // Use existing admin
+          onLogin(backendAdmin);
+        } else {
+          // Create new admin with fixed ID
+          const adminUser: User = {
+            id: 'admin_1',
+            phoneNumber: '',
+            name: 'Administrator',
+            role: UserRole.ADMIN,
+            balance: 0,
+            qrData: 'admin_' + Date.now(),
+            createdAt: new Date().toISOString()
+          };
+          
+          // Save admin first, then login
+          try {
+            await storageService.saveUser(adminUser);
+            onLogin(adminUser);
+          } catch (err) {
+            console.error('Admin save error:', err);
+            onLogin(adminUser);
           }
-        }).catch(err => console.error('Background admin sync error:', err));
+        }
       } 
       else if (username === TEST_USERNAME && password === TEST_PASSWORD) {
-        const testUser: User = {
-          id: 'test_user_1',
-          phoneNumber: '+998901234567',
-          name: 'Test User',
-          role: UserRole.USER,
-          balance: 0,
-          qrData: 'test_user_1',
-          createdAt: new Date().toISOString()
-        };
+        // First check if test user exists in backend
+        const backendTest = await storageService.findUserByIdDirect('test_user_1');
         
-        onLogin(testUser);
-        
-        storageService.getUsers().then(existingUsers => {
-          const backendTest = existingUsers.find(u => u.id === 'test_user_1');
-          if (backendTest) {
-            localStorage.setItem('loyalty_session', JSON.stringify(backendTest));
-          } else {
-            storageService.saveUser(testUser);
+        if (backendTest) {
+          // Use existing test user with latest balance
+          onLogin(backendTest);
+        } else {
+          // Create new test user
+          const testUser: User = {
+            id: 'test_user_1',
+            phoneNumber: '+998901234567',
+            name: 'Test User',
+            role: UserRole.USER,
+            balance: 0,
+            qrData: generateSecureQrToken(),
+            createdAt: new Date().toISOString()
+          };
+          
+          // Save user first, then login
+          try {
+            await storageService.saveUser(testUser);
+            onLogin(testUser);
+          } catch (err) {
+            console.error('Test user save error:', err);
+            // Login anyway with local user
+            onLogin(testUser);
           }
-        }).catch(err => console.error('Background test user sync error:', err));
+        }
       } 
       else {
         setError(t('invalidCredentials'));
@@ -124,33 +139,43 @@ const AuthPage: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
     
     try {
       const telegramId = String(tgUser.id);
-      const qrDataValue = 'tg_' + telegramId;
       
-      // Check if user already exists in backend
-      const existingUsers = await storageService.getUsers(true);
-      let existingUser = existingUsers.find(u => String(u.id) === telegramId);
+      // Check if user already exists in backend (lightweight - single user lookup)
+      const existingUser = await storageService.findUserByTelegramId(telegramId);
       
       if (existingUser) {
-        // User exists - use their stored data (with updated balance)
-        if (!existingUser.qrData || existingUser.qrData === '' || existingUser.qrData === telegramId) {
-          existingUser.qrData = qrDataValue;
-          storageService.saveUser(existingUser).catch(err => console.error('Background qrData update error:', err));
+        // User exists - use their stored data
+        // Only regenerate QR if it's still using old predictable format
+        if (!existingUser.qrData || existingUser.qrData.startsWith('tg_') || existingUser.qrData === telegramId) {
+          // Generate secure random QR token and save before login
+          existingUser.qrData = generateSecureQrToken();
+          try {
+            await storageService.saveUser(existingUser);
+          } catch (err) {
+            console.error('Error updating qrData:', err);
+          }
         }
         onLogin(existingUser);
       } else {
-        // New user - create profile
+        // New user - create profile with secure random QR token
         const user: User = {
           id: telegramId,
           phoneNumber: '',
           name: tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : ''),
           role: UserRole.USER,
           balance: 0,
-          qrData: qrDataValue,
+          qrData: generateSecureQrToken(),
           createdAt: new Date().toISOString(),
         };
         
-        onLogin(user);
-        storageService.saveUser(user).catch(err => console.error('Background user save error:', err));
+        // Save user first, then login
+        try {
+          await storageService.saveUser(user);
+          onLogin(user);
+        } catch (err) {
+          console.error('Error saving new user:', err);
+          onLogin(user); // Login anyway
+        }
       }
       
     } catch (error) {
@@ -440,13 +465,19 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
   );
 
   const userMap = useMemo(() => 
-    new Map(allUsers.map(u => [u.id, u])),
+    new Map(allUsers.map(u => [String(u.id), u])),
     [allUsers]
   );
 
   const sortedTransactions = useMemo(() => 
     [...allTransactions].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
     [allTransactions]
+  );
+
+  // Pre-filter valid transactions (with userId) to avoid filtering on every render
+  const validTransactions = useMemo(() =>
+    sortedTransactions.filter(tx => tx.userId && String(tx.userId).trim() !== ''),
+    [sortedTransactions]
   );
 
   const sortedUsersByBalance = useMemo(() => 
@@ -606,38 +637,38 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
   };
 
   const handleScan = async (qrData: string) => {
-    const users = await storageService.getUsers(true);
+    // Optimized: Direct lookup by QR data instead of fetching all users
+    const found = await storageService.findUserByQrData(qrData.trim());
     
-    if (users.length === 0) {
-      setShowScanner(false);
-      setScanMode(null);
-      alert(t('noUsersAlert'));
-      return;
-    }
-    
-    const found = users.find(u => {
-      const userQrData = String(u.qrData).trim();
-      const scannedData = String(qrData).trim();
-      return userQrData === scannedData || String(u.id) === scannedData;
-    });
-    
-    if (found) {
+    if (found && found.id) {
       setSelectedUser(found);
+      // Ensure user is in allUsers for transaction display (they might not be in local cache)
+      setAllUsers(prev => {
+        const exists = prev.some(u => String(u.id) === String(found.id));
+        if (exists) {
+          // Update existing user with fresh data
+          return prev.map(u => String(u.id) === String(found.id) ? found : u);
+        } else {
+          // Add new user to local state
+          return [...prev, found];
+        }
+      });
       setShowScanner(false);
     } else {
       setShowScanner(false);
       setScanMode(null);
-      alert(t('unknownUserQR') + "\n" + "Scanned: '" + qrData + "'\nKnown QR codes: " + users.map(u => "'" + u.qrData + "'").join(", "));
+      alert(t('unknownUserQR'));
     }
   };
 
   const processTransaction = async () => {
-        if (!selectedUser || !amount || parseFloat(amount) <= 0 || !scanMode || isProcessing) return;
+        const parsedAmount = parseFloat(amount);
+        if (!selectedUser || !amount || isNaN(parsedAmount) || parsedAmount <= 0 || !scanMode || isProcessing) return;
 
         setIsProcessing(true);
         
         try {
-          const transAmount = parseFloat(amount);
+          const transAmount = parsedAmount;
           let cashback = 0;
 
           if (scanMode === TransactionType.EARN) {
@@ -911,11 +942,16 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-black text-slate-400">UZS</span>
                                     <input
                                         type="text"
+                                        inputMode="numeric"
                                         className={`w-full pl-20 pr-8 py-7 text-4xl font-black bg-slate-50 border-none rounded-[2rem] focus:ring-4 ${scanMode === TransactionType.EARN ? 'focus:ring-emerald-100' : 'focus:ring-indigo-100'} outline-none transition text-slate-800 placeholder:text-slate-200`}
                                         placeholder="0.00"
                                         autoFocus
                                         value={amount.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}
-                                        onChange={(e) => setAmount(e.target.value.replace(/\./g, ''))}
+                                        onChange={(e) => {
+                                          // Only allow digits
+                                          const numericValue = e.target.value.replace(/[^0-9]/g, '');
+                                          setAmount(numericValue);
+                                        }}
                                     />
                                 </div>
                             </div>
@@ -948,7 +984,7 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                                 className="flex-1 h-20 rounded-3xl text-lg shadow-xl" 
                                 variant={scanMode === TransactionType.EARN ? 'success' : 'primary'} 
                                 onClick={processTransaction} 
-                                disabled={!amount || parseFloat(amount) <= 0 || isInvalidRedeem || isProcessing}
+                                disabled={!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0 || isInvalidRedeem || isProcessing}
                             >
                                 {isProcessing ? t('processing') : (scanMode === TransactionType.EARN ? `${t('rewardPlus')}${formatPrice(potentialReward)}` : `${t('deductMinus')}${formatPrice(potentialDeduction)}`)}
                             </Button>
@@ -982,10 +1018,10 @@ const AdminDashboard: React.FC<{ admin: User, onLogout: () => void }> = ({ admin
                             </tr>
                         </thead>
                         <tbody className="text-[11px] md:text-xs">
-                            {sortedTransactions
+                            {validTransactions
                               .slice(0, showAllTransactions ? undefined : INITIAL_TX_LIMIT)
                               .map(tx => {
-                                const customer = userMap.get(tx.userId);
+                                const customer = userMap.get(String(tx.userId));
                                 return (
                                     <tr key={tx.id} className="border-b last:border-0 border-slate-50 hover:bg-slate-50 transition-colors">
                                         <td className="p-4 md:p-6 max-w-[150px]">
@@ -1117,20 +1153,16 @@ export default function App() {
           setIsLoading(false);
           
           if (storedUser.role !== UserRole.ADMIN) {
-            // FAST: Load cached transactions immediately
-            const { transactions: cachedTxs } = storageService.getAllDataFast();
-            if (cachedTxs.length > 0) {
-              setTransactions(cachedTxs);
-            }
-            
-            // Then refresh in background
-            storageService.getTransactions(true).then(txs => {
+            // Load only this user's transactions (lightweight)
+            storageService.getTransactionsForUser(storedUser.id).then(txs => {
               setTransactions(txs);
             }).catch(err => console.error('Error loading transactions:', err));
           }
           
-          storageService.findUserById(storedUser.id).then(freshUser => {
-            if (freshUser) {
+          // Refresh user data directly (lightweight - single user)
+          storageService.findUserByIdDirect(storedUser.id).then(freshUser => {
+            // Only update if still logged in
+            if (freshUser && localStorage.getItem('loyalty_session')) {
               setUser(freshUser);
               localStorage.setItem('loyalty_session', JSON.stringify(freshUser));
             }
@@ -1152,14 +1184,8 @@ export default function App() {
     localStorage.setItem('loyalty_session', JSON.stringify(u));
     
     if (u.role !== UserRole.ADMIN) {
-      // FAST: Load cached transactions immediately
-      const { transactions: cachedTxs } = storageService.getAllDataFast();
-      if (cachedTxs.length > 0) {
-        setTransactions(cachedTxs);
-      }
-      
-      // Then refresh in background
-      storageService.getTransactions(true).then(txs => {
+      // Load only this user's transactions (lightweight)
+      storageService.getTransactionsForUser(u.id).then(txs => {
         setTransactions(txs);
       }).catch(err => console.error('Error loading transactions:', err));
     }
@@ -1168,12 +1194,16 @@ export default function App() {
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('loyalty_session');
+    // Clear cached data to free up storage
+    storageService.clearCache();
   };
 
   useEffect(() => {
     if (user && user.role !== UserRole.ADMIN && transactions.length > 0) {
-      storageService.findUserById(user.id).then(freshUser => {
-        if (freshUser && freshUser.balance !== user.balance) {
+      const currentUserId = user.id;
+      storageService.findUserByIdDirect(user.id).then(freshUser => {
+        // Only update if still logged in as the same user
+        if (freshUser && localStorage.getItem('loyalty_session')) {
           setUser(freshUser);
           localStorage.setItem('loyalty_session', JSON.stringify(freshUser));
         }
@@ -1192,18 +1222,20 @@ export default function App() {
       isRefreshing = true;
       
       try {
-        // Fetch fresh user and transactions in parallel
-        const [freshUser, txs] = await Promise.all([
-          storageService.findUserById(user.id),
-          storageService.getTransactions(true)
+        // Fetch fresh user and user's transactions in parallel (lightweight)
+        const [freshUser, userTxs] = await Promise.all([
+          storageService.findUserByIdDirect(user.id),
+          storageService.getTransactionsForUser(user.id)
         ]);
         
-        if (freshUser && freshUser.balance !== user.balance) {
+        // Only update if still logged in (check session exists to avoid race with logout)
+        if (freshUser && localStorage.getItem('loyalty_session')) {
           setUser(freshUser);
           localStorage.setItem('loyalty_session', JSON.stringify(freshUser));
         }
         
-        setTransactions(txs);
+        // Set user's transactions directly
+        setTransactions(userTxs);
       } catch (err) {
         console.error('Error refreshing:', err);
       } finally {
@@ -1218,8 +1250,8 @@ export default function App() {
         // Refresh immediately when app becomes visible
         refreshData();
         
-        // Then refresh every 15 seconds for faster updates
-        intervalId = setInterval(refreshData, 15000);
+        // Refresh every 30 seconds (balanced for scalability)
+        intervalId = setInterval(refreshData, 30000);
       }
     };
     

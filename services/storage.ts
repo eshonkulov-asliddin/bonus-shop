@@ -99,6 +99,29 @@ async function fetchTransactions(): Promise<Transaction[]> {
   return data;
 }
 
+async function fetchUserTransactions(userId: string): Promise<Transaction[]> {
+  const data = await fetchJSON<Transaction[]>(`${APPSCRIPT_URL}?action=getUserTransactions&userId=${encodeURIComponent(userId)}`);
+  if (!Array.isArray(data)) {
+    throw new Error('Invalid transactions response');
+  }
+  return data;
+}
+
+async function fetchUserById(userId: string): Promise<User | null> {
+  const data = await fetchJSON<User | null>(`${APPSCRIPT_URL}?action=getUser&userId=${encodeURIComponent(userId)}`);
+  return data;
+}
+
+async function fetchUserByTelegramId(telegramId: string): Promise<User | null> {
+  const data = await fetchJSON<User | null>(`${APPSCRIPT_URL}?action=findUserByTelegramId&telegramId=${encodeURIComponent(telegramId)}`);
+  return data;
+}
+
+async function fetchUserByQrData(qrData: string): Promise<User | null> {
+  const data = await fetchJSON<User | null>(`${APPSCRIPT_URL}?action=findUserByQrData&qrData=${encodeURIComponent(qrData)}`);
+  return data;
+}
+
 // Background refresh - doesn't block, updates cache when done
 function refreshInBackground(): void {
   // Avoid duplicate fetches
@@ -194,6 +217,21 @@ export const storageService = {
     }
   },
 
+  // Lightweight endpoint for user polling - only fetches user's transactions
+  getTransactionsForUser: async (userId: string): Promise<Transaction[]> => {
+    try {
+      return await fetchUserTransactions(userId);
+    } catch (error) {
+      console.error('Error fetching user transactions:', error);
+      // Fallback to cached transactions filtered by userId
+      const cached = getCachedTransactions();
+      if (cached) {
+        return cached.filter(tx => tx.userId === userId);
+      }
+      return [];
+    }
+  },
+
   // Fetch both in parallel - waits for network
   getAllData: async (forceRefresh = false): Promise<{ users: User[]; transactions: Transaction[] }> => {
     // Return valid memory cache
@@ -271,6 +309,36 @@ export const storageService = {
   findUserById: async (id: string): Promise<User | undefined> => {
     const users = await storageService.getUsers();
     return users.find(u => String(u.id) === String(id));
+  },
+
+  // Lightweight endpoint for client - fetches single user directly
+  findUserByIdDirect: async (id: string): Promise<User | null> => {
+    try {
+      return await fetchUserById(id);
+    } catch (error) {
+      console.error('Error fetching user:', error);
+      return null;
+    }
+  },
+
+  // Find user by Telegram ID for login (lightweight - single user lookup)
+  findUserByTelegramId: async (telegramId: string): Promise<User | null> => {
+    try {
+      return await fetchUserByTelegramId(telegramId);
+    } catch (error) {
+      console.error('Error finding user by Telegram ID:', error);
+      return null;
+    }
+  },
+
+  // Find user by QR Data for admin scanning (lightweight - single user lookup)
+  findUserByQrData: async (qrData: string): Promise<User | null> => {
+    try {
+      return await fetchUserByQrData(qrData);
+    } catch (error) {
+      console.error('Error finding user by QR data:', error);
+      return null;
+    }
   },
 
   clearCache: () => {

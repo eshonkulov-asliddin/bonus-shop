@@ -17,8 +17,20 @@ function doGet(e) {
       case 'getUsers':
         result = getUsersCached();
         break;
+      case 'getUser':
+        result = getUserById(e.parameter.userId);
+        break;
+      case 'findUserByTelegramId':
+        result = findUserByTelegramId(e.parameter.telegramId);
+        break;
+      case 'findUserByQrData':
+        result = findUserByQrData(e.parameter.qrData);
+        break;
       case 'getTransactions':
         result = getTransactionsCached();
+        break;
+      case 'getUserTransactions':
+        result = getUserTransactions(e.parameter.userId);
         break;
       case 'getAllData':
         result = getAllDataCached();
@@ -126,6 +138,43 @@ function getUsersCached() {
   return users;
 }
 
+// Get a single user by ID (lightweight for client polling)
+function getUserById(userId) {
+  if (!userId) return null;
+  const users = getUsersCached();
+  for (var i = 0; i < users.length; i++) {
+    if (String(users[i].id) === String(userId)) {
+      return users[i];
+    }
+  }
+  return null;
+}
+
+// Find user by Telegram ID (for login check)
+function findUserByTelegramId(telegramId) {
+  if (!telegramId) return null;
+  const users = getUsersCached();
+  for (var i = 0; i < users.length; i++) {
+    if (String(users[i].id) === String(telegramId)) {
+      return users[i];
+    }
+  }
+  return null;
+}
+
+// Find user by QR Data (for admin scanning - O(n) on cached data)
+function findUserByQrData(qrData) {
+  if (!qrData) return null;
+  const qrDataStr = String(qrData).trim();
+  const users = getUsersCached();
+  for (var i = 0; i < users.length; i++) {
+    if (String(users[i].qrData).trim() === qrDataStr) {
+      return users[i];
+    }
+  }
+  return null;
+}
+
 function getTransactionsCached() {
   const cache = CacheService.getScriptCache();
   const cached = cache.get('transactions_data');
@@ -135,6 +184,16 @@ function getTransactionsCached() {
   const transactions = getTransactions();
   cache.put('transactions_data', JSON.stringify(transactions), CACHE_TTL);
   return transactions;
+}
+
+// Get transactions for a specific user (lightweight for client polling)
+function getUserTransactions(userId) {
+  if (!userId) return [];
+  const allTransactions = getTransactionsCached();
+  const userIdStr = String(userId);
+  return allTransactions.filter(function(tx) {
+    return String(tx.userId) === userIdStr;
+  }).slice(0, 50); // Limit to last 50 transactions
 }
 
 // Combined endpoint - fetches both in one request (faster!)
@@ -213,11 +272,11 @@ function getTransactions() {
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
     transactions.push({
-      id: row[0],
-      userId: row[1],
+      id: String(row[0]),
+      userId: String(row[1]),
       amount: parseFloat(row[2]) || 0,
       cashbackAmount: parseFloat(row[3]) || 0,
-      type: row[4],
+      type: String(row[4]),
       timestamp: row[5],
       adminId: row[6]
     });
@@ -337,20 +396,27 @@ function saveTransaction(transaction) {
   
   // Update user balance
   const userData = usersSheet.getDataRange().getValues();
+  const txUserIdStr = String(transaction.userId);
+  const txCashbackAmount = parseFloat(transaction.cashbackAmount) || 0;
+  
+  Logger.log('saveTransaction: Looking for userId=' + txUserIdStr + ', cashbackAmount=' + txCashbackAmount + ', type=' + transaction.type);
+  
   for (let i = 1; i < userData.length; i++) {
-    if (userData[i][0] === transaction.userId) {
+    if (String(userData[i][0]) === txUserIdStr) {
       const currentBalance = parseFloat(userData[i][4]) || 0;
       let newBalance;
       
       if (transaction.type === 'EARN') {
-        newBalance = currentBalance + transaction.cashbackAmount;
+        newBalance = currentBalance + txCashbackAmount;
       } else if (transaction.type === 'REDEEM') {
-        newBalance = currentBalance - transaction.cashbackAmount;
+        newBalance = currentBalance - txCashbackAmount;
       } else {
         newBalance = currentBalance;
       }
       
+      Logger.log('saveTransaction: Updating balance from ' + currentBalance + ' to ' + newBalance + ' for user row ' + (i + 1));
       usersSheet.getRange(i + 1, 5).setValue(newBalance);
+      SpreadsheetApp.flush(); // Ensure balance is written
       break;
     }
   }
